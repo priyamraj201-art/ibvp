@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% set active_page = "anpr_add" %}
+{% block title %}Add Plate — IBVAP Surveillance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Add Plate to Watchlist</h1>
+    <p>Register a vehicle license plate for automated surveillance alerts</p>
+</div>
+
+<div class="card" style="max-width: 540px;">
+    <form id="add-plate-form">
+        <div class="form-group">
+            <label for="plate_number">Plate Number *</label>
+            <input type="text" id="plate_number" name="plate_number" class="form-control" required
+                   placeholder="e.g. MH12AB1234" style="font-family: monospace; font-size: 16px; letter-spacing: 1px; text-transform: uppercase;">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="owner_name">Owner Name</label>
+                <input type="text" id="owner_name" name="owner_name" class="form-control" placeholder="e.g. John Doe">
+            </div>
+            <div class="form-group">
+                <label for="alert_category">Alert Category</label>
+                <select id="alert_category" name="alert_category" class="form-control">
+                    <option value="STOLEN">STOLEN</option>
+                    <option value="WANTED">WANTED</option>
+                    <option value="SUSPICIOUS" selected>SUSPICIOUS</option>
+                    <option value="VIP">VIP</option>
+                    <option value="UNREGISTERED">UNREGISTERED</option>
+                    <option value="EXPIRED_PERMIT">EXPIRED_PERMIT</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" class="form-control" rows="3" placeholder="Additional details..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="add-btn">Add to Watchlist</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('add-plate-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('add-btn');
+        btn.disabled = true;
+        btn.textContent = 'Adding...';
+
+        const formData = new FormData(this);
+
+        try {
+            const res = await fetch('/api/anpr/plate', { method: 'POST', body: formData });
+            const data = await res.json();
+
+            if (data.success) {
+                showToast(data.message);
+                setTimeout(() => { window.location.href = '/anpr/watchlist'; }, 1000);
+            } else {
+                showToast(data.message || 'Failed to add plate', 'error');
+                btn.disabled = false;
+                btn.textContent = 'Add to Watchlist';
+            }
+        } catch (err) {
+            showToast('Network error', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Add to Watchlist';
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% set active_page = "anpr_logs" %}
+{% block title %}ANPR Detection Logs — IBVAP Surveillance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>ANPR — Detection Logs</h1>
+    <p>License plate recognition audit trail — auto-refreshes every 5 seconds</p>
+</div>
+
+<div class="card">
+    {% if logs %}
+    <div class="table-wrap">
+        <table id="anpr-logs-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Track ID</th>
+                    <th>Plate Number</th>
+                    <th>Confidence</th>
+                    <th>Category</th>
+                    <th>Flagged</th>
+                    <th>BBox Area</th>
+                    <th>Crop</th>
+                </tr>
+            </thead>
+            <tbody id="anpr-logs-body">
+                {% for l in logs %}
+                <tr>
+                    <td>{{ l.timestamp }}</td>
+                    <td>{{ l.track_id }}</td>
+                    <td><strong style="font-family: monospace; letter-spacing: 1px;">{{ l.plate_number }}</strong></td>
+                    <td>
+                        <div class="conf-bar">
+                            <div class="conf-bar-track">
+                                <div class="conf-bar-fill" style="width: {{ (l.confidence * 100)|round }}%; background: {% if l.confidence >= 0.8 %}#22c55e{% elif l.confidence >= 0.5 %}#facc15{% else %}#dc2626{% endif %};"></div>
+                            </div>
+                            <span class="conf-bar-label">{{ (l.confidence * 100)|round(1) }}%</span>
+                        </div>
+                    </td>
+                    <td><span class="badge badge-{{ l.alert_category|lower }}">{{ l.alert_category or 'NORMAL' }}</span></td>
+                    <td>
+                        {% if l.is_flagged %}
+                        <span class="badge badge-alert">ALERT</span>
+                        {% else %}
+                        <span class="badge badge-ok">OK</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ l.bbox_area }}</td>
+                    <td>
+                        {% if l.crop_path %}
+                        <a href="{{ l.crop_path }}" target="_blank" style="font-size: 12px;">📷 View</a>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p>No detection logs found</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    setInterval(() => {
+        fetch('/anpr/logs')
+            .then(r => r.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newBody = doc.getElementById('anpr-logs-body');
+                const currentBody = document.getElementById('anpr-logs-body');
+                if (newBody && currentBody) {
+                    currentBody.innerHTML = newBody.innerHTML;
+                }
+            })
+            .catch(() => {});
+    }, 5000);
+</script>
+{% endblock %}

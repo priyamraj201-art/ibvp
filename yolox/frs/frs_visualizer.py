@@ -69,15 +69,15 @@ class FRSVisualizer:
 
                     # Flagged / Known person badge
                     if is_flagged:
-                        badge_text = f"🚨 [{category}] {name} ({conf:.2f})"
+                        badge_text = f"[ALERT: {category}] {name} ({conf:.2f})"
                         box_thickness = 3
                     else:
-                        badge_text = f"👤 [{category}] {name} ({conf:.2f})"
+                        badge_text = f"[{category}] {name} ({conf:.2f})"
                         box_thickness = 2
                 else:
                     # Unknown individual
                     badge_color = FRSVisualizer.COLOR_MAP["UNKNOWN"]
-                    badge_text = f"👤 UNKNOWN ({conf:.2f})"
+                    badge_text = f"UNKNOWN ({conf:.2f})"
                     box_thickness = 1
 
                 # Draw bounding box
@@ -98,7 +98,7 @@ class FRSVisualizer:
                 # Target currently scanning / unprocessed
                 badge_color = (200, 200, 200)
                 cv2.rectangle(im, (x1, y1), (x2, y2), badge_color, 1)
-                scan_text = f"👤 HUMAN #{track_id} [Scanning...]"
+                scan_text = f"HUMAN #{track_id} [Scanning...]"
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 (tw, th), _ = cv2.getTextSize(scan_text, font, 0.45, 1)
                 by1 = max(0, y1 - th - 8)

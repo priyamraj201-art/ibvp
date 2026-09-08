@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% set active_page = "alerts" %}
+{% block title %}Unified Alerts — IBVAP Surveillance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Unified Security Alerts</h1>
+    <p>Merged FRS + ANPR flagged detections — auto-refreshes every 3 seconds</p>
+</div>
+
+<div class="toolbar">
+    <a href="/alerts?alert_type=all" class="btn {% if filter_type == 'all' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">All</a>
+    <a href="/alerts?alert_type=face" class="btn {% if filter_type == 'face' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Face Only</a>
+    <a href="/alerts?alert_type=plate" class="btn {% if filter_type == 'plate' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Plate Only</a>
+</div>
+
+<div class="card">
+    {% if alerts %}
+    <div class="table-wrap">
+        <table id="alerts-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>ID</th>
+                    <th>Name / Plate</th>
+                    <th>Category</th>
+                    <th>Confidence</th>
+                    <th>Camera</th>
+                </tr>
+            </thead>
+            <tbody id="alerts-body">
+                {% for a in alerts %}
+                <tr>
+                    <td>{{ a.timestamp }}</td>
+                    <td><span class="badge badge-{{ a.type|lower }}">{{ a.type }}</span></td>
+                    <td><code>{{ a.id }}</code></td>
+                    <td><strong>{{ a.name_or_plate }}</strong></td>
+                    <td><span class="badge badge-{{ a.category|lower }}">{{ a.category }}</span></td>
+                    <td>
+                        <div class="conf-bar">
+                            <div class="conf-bar-track">
+                                <div class="conf-bar-fill" style="width: {{ (a.confidence * 100)|round }}%; background: {% if a.confidence >= 0.8 %}#22c55e{% elif a.confidence >= 0.5 %}#facc15{% else %}#dc2626{% endif %};"></div>
+                            </div>
+                            <span class="conf-bar-label">{{ (a.confidence * 100)|round(1) }}%</span>
+                        </div>
+                    </td>
+                    <td>{{ a.camera_id }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">🔔</div>
+        <p>No security alerts recorded</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    setInterval(() => {
+        const params = new URLSearchParams(window.location.search);
+        fetch('/alerts?' + params.toString())
+            .then(r => r.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newBody = doc.getElementById('alerts-body');
+                const currentBody = document.getElementById('alerts-body');
+                if (newBody && currentBody) {
+                    currentBody.innerHTML = newBody.innerHTML;
+                }
+            })
+            .catch(() => {});
+    }, 3000);
+</script>
+{% endblock %}

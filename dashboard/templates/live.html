@@ -1,0 +1,674 @@
+{% extends "base.html" %}
+{% set active_page = "live" %}
+{% block title %}Live Feed — IBVAP Surveillance{% endblock %}
+
+{% block extra_css %}
+<style>
+    .live-layout {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 20px;
+        align-items: start;
+    }
+    .video-panel .video-container {
+        background: #000;
+        border-radius: 8px;
+        overflow: hidden;
+        position: relative;
+        min-height: 400px;
+    }
+    .video-panel .video-container img {
+        width: 100%;
+        display: block;
+        border-radius: 8px;
+    }
+    .video-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 400px;
+        color: #94a3b8;
+        font-size: 15px;
+        background: #0f172a;
+        border-radius: 8px;
+        padding: 24px;
+        text-align: center;
+    }
+    .video-error-banner {
+        display: none;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #dc2626;
+        padding: 12px 16px;
+        border-radius: 6px;
+        margin-top: 12px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    .controls-panel {
+        margin-top: 16px;
+    }
+    .controls-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    .controls-grid.three-col {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+    .controls-grid.four-col {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    .quick-sources {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+    }
+    .quick-sources button {
+        padding: 3px 8px;
+        font-size: 12px;
+        border-radius: 4px;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        cursor: pointer;
+        color: #334155;
+    }
+    .quick-sources button:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+    }
+    .control-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-top: 16px;
+        flex-wrap: wrap;
+    }
+    .sidebar-section {
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .sidebar-section:last-child { border-bottom: none; }
+    .sidebar-section .section-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--text-muted);
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+    .sidebar-stat {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 3px 0;
+        font-size: 14px;
+    }
+    .sidebar-stat .label { color: var(--text-muted); }
+    .sidebar-stat .value { font-weight: 600; }
+
+    .alert-pill {
+        display: inline-block;
+        padding: 4px 14px;
+        border-radius: 100px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+    .match-card {
+        background: var(--row-alt);
+        border-radius: 6px;
+        padding: 10px 12px;
+        margin-top: 8px;
+        font-size: 13px;
+        line-height: 1.6;
+    }
+    .match-card .match-name {
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--text);
+    }
+    .match-card .match-detail {
+        color: var(--text-muted);
+    }
+    .advanced-toggle {
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--primary);
+        margin-bottom: 12px;
+        user-select: none;
+    }
+    .advanced-toggle:hover { text-decoration: underline; }
+    .advanced-fields { display: none; margin-bottom: 12px; }
+    .advanced-fields.show { display: block; }
+
+    /* Modal */
+    .modal-backdrop {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(2px);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-backdrop.show {
+        display: flex;
+    }
+    .modal-dialog {
+        background: #ffffff;
+        border-radius: 8px;
+        box-shadow: var(--shadow-lg);
+        max-width: 520px;
+        width: 90%;
+        padding: 24px;
+        position: relative;
+    }
+    .modal-close {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: transparent;
+        border: none;
+        font-size: 20px;
+        cursor: pointer;
+        color: var(--text-muted);
+    }
+
+    @media (max-width: 1024px) {
+        .live-layout { grid-template-columns: 1fr; }
+        .controls-grid.four-col { grid-template-columns: 1fr 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Live Feed</h1>
+    <p>Real-time GPU-accelerated multi-modal surveillance with live face and plate identification</p>
+</div>
+
+<div class="live-layout">
+    <!-- ═══════ Left: Video + Controls ═══════ -->
+    <div class="video-panel">
+        <div class="video-container" id="video-container">
+            <div class="video-placeholder" id="video-placeholder">
+                <span style="font-size: 36px; margin-bottom: 10px;">📹</span>
+                <span>Stream is stopped. Select source, hardware accelerator, and click <strong>▶ Start Stream</strong>.</span>
+            </div>
+            <img id="video-feed" src="" style="display:none;" alt="Live Feed">
+        </div>
+
+        <div id="video-error-banner" class="video-error-banner"></div>
+
+        <div class="controls-panel card">
+            <div class="card-header">Stream Controls</div>
+
+            <div class="controls-grid">
+                <div class="form-group">
+                    <label for="source">Source (Camera ID or Video File)</label>
+                    <input type="text" id="source" class="form-control" value="1" placeholder="1 or 2 or videos/palace.mp4">
+                    <div class="quick-sources">
+                        <span style="font-size: 11px; color: var(--text-muted); align-self: center;">Quick pick:</span>
+                        <button type="button" onclick="setSource('1')">Camera 1</button>
+                        <button type="button" onclick="setSource('2')">Camera 2</button>
+                        <button type="button" onclick="setSource('0')">Camera 0</button>
+                        <button type="button" onclick="setSource('videos/palace.mp4')">Sample Video</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="device">Hardware Accelerator</label>
+                    <select id="device" class="form-control" style="font-weight: 600;">
+                        <option value="gpu" selected>⚡ GPU (NVIDIA CUDA - High Speed)</option>
+                        <option value="cpu">💻 CPU Only</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="controls-grid four-col" style="margin-bottom: 12px;">
+                <div class="form-check">
+                    <input type="checkbox" id="fp16" checked>
+                    <label for="fp16">FP16 Fast Mode</label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="enable_motion_alert" checked>
+                    <label for="enable_motion_alert">Motion Alert</label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="enable_frs" checked>
+                    <label for="enable_frs">Enable FRS</label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" id="enable_anpr">
+                    <label for="enable_anpr">Enable ANPR</label>
+                </div>
+            </div>
+
+            <div class="controls-grid">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="detect_skip">Frame Skip (1 = infer every frame)</label>
+                    <input type="number" id="detect_skip" class="form-control" value="1" min="1" max="10">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="detector_mode">Tracking Routing Mode</label>
+                    <select id="detector_mode" class="form-control">
+                        <option value="single_class_test" selected>Test Mode (All tracks evaluated)</option>
+                        <option value="multi_class_production">Production Mode (Segregate Human / Vehicle)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="advanced-toggle" style="margin-top: 12px;" onclick="document.getElementById('advanced-fields').classList.toggle('show')">
+                ▶ Advanced Model Configurations
+            </div>
+            <div class="advanced-fields" id="advanced-fields">
+                <div class="controls-grid">
+                    <div class="form-group">
+                        <label for="exp_file">Exp File</label>
+                        <input type="text" id="exp_file" class="form-control" value="exps/example/mot/yolox_x_mix_det.py">
+                    </div>
+                    <div class="form-group">
+                        <label for="ckpt_file">Checkpoint</label>
+                        <input type="text" id="ckpt_file" class="form-control" value="pretrained/bytetrack_x_mot17.pth.tar">
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-actions">
+                <button class="btn btn-success" id="btn-start" onclick="startStream()">▶ Start Stream</button>
+                <button class="btn btn-danger" id="btn-stop" onclick="stopStream()" disabled>■ Stop Stream</button>
+                <button class="btn btn-primary" id="btn-quick-enroll" onclick="openEnrollModal()">📸 Enroll Face from Live Stream</button>
+                <div class="spacer"></div>
+                <span class="status-pill stopped" id="status-pill">
+                    <span class="dot"></span>
+                    <span id="status-text">STOPPED</span>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ Right: Live Stats Sidebar ═══════ -->
+    <div class="card" id="stats-sidebar" style="position: sticky; top: 76px;">
+        <div class="sidebar-section">
+            <div class="section-title">Live Status</div>
+            <div class="sidebar-stat">
+                <span class="label">Status</span>
+                <span class="status-pill stopped" id="side-status">
+                    <span class="dot"></span>
+                    <span id="side-status-text">STOPPED</span>
+                </span>
+            </div>
+            <div class="sidebar-stat">
+                <span class="label">Device</span>
+                <span class="value" id="side-device" style="color: var(--primary);">—</span>
+            </div>
+            <div class="sidebar-stat">
+                <span class="label">FPS</span>
+                <span class="value" id="side-fps">—</span>
+            </div>
+            <div class="sidebar-stat">
+                <span class="label">Frame</span>
+                <span class="value" id="side-frame">—</span>
+            </div>
+            <div class="sidebar-stat">
+                <span class="label">Source</span>
+                <span class="value" id="side-source" style="max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">—</span>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="section-title">Tracking</div>
+            <div class="sidebar-stat">
+                <span class="label">Active Tracks</span>
+                <span class="value" id="side-tracks">0</span>
+            </div>
+            <div class="sidebar-stat">
+                <span class="label">Humans</span>
+                <span class="value" id="side-humans">0</span>
+            </div>
+            <div class="sidebar-stat">
+                <span class="label">Vehicles</span>
+                <span class="value" id="side-vehicles">0</span>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="section-title">Motion Alert</div>
+            <div id="alert-pill-container">
+                <span class="alert-pill" id="side-alert" style="background: #f0fdf4; color: #16a34a;">NORMAL</span>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="section-title">Last Face Match</div>
+            <div id="frs-match-card" class="match-card" style="display:none;">
+                <div class="match-name" id="frs-name">—</div>
+                <div class="match-detail">ID: <span id="frs-id">—</span></div>
+                <div class="match-detail">Conf: <span id="frs-conf">—</span> <span class="badge" id="frs-cat-badge">—</span></div>
+                <div class="match-detail" id="frs-time">—</div>
+            </div>
+            <div id="frs-match-empty" style="color: var(--text-muted); font-size: 13px;">No matches yet</div>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="section-title">Last Plate Match</div>
+            <div id="anpr-match-card" class="match-card" style="display:none;">
+                <div class="match-name" id="anpr-plate">—</div>
+                <div class="match-detail"><span class="badge" id="anpr-cat-badge">—</span></div>
+                <div class="match-detail">Conf: <span id="anpr-conf">—</span></div>
+                <div class="match-detail" id="anpr-time">—</div>
+            </div>
+            <div id="anpr-match-empty" style="color: var(--text-muted); font-size: 13px;">No matches yet</div>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="section-title">Session Alerts</div>
+            <div class="sidebar-stat">
+                <span class="label">Face Alerts</span>
+                <span class="value" id="side-frs-alerts">0</span>
+            </div>
+            <div class="sidebar-stat">
+                <span class="label">Plate Alerts</span>
+                <span class="value" id="side-anpr-alerts">0</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════ Live Stream Face Enrollment Modal ═══════ -->
+<div id="enroll-modal" class="modal-backdrop">
+    <div class="modal-dialog">
+        <button type="button" class="modal-close" onclick="closeEnrollModal()">&times;</button>
+        <h3 style="font-size: 18px; margin-bottom: 6px;">Enroll Face from Live Stream</h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            Extracts biometric ArcFace embedding from the current live camera frame
+        </p>
+
+        <form id="stream-enroll-form">
+            <div class="form-group">
+                <label for="modal-person-id">Person ID *</label>
+                <input type="text" id="modal-person-id" class="form-control" required placeholder="e.g. SUSPECT_009 or STAFF_42">
+            </div>
+
+            <div class="form-group">
+                <label for="modal-name">Full Name *</label>
+                <input type="text" id="modal-name" class="form-control" required placeholder="e.g. Jane Doe">
+            </div>
+
+            <div class="form-group">
+                <label for="modal-category">Category</label>
+                <select id="modal-category" class="form-control">
+                    <option value="WANTED">WANTED (Red Alert Hotlist)</option>
+                    <option value="SUSPECT">SUSPECT (Orange Watchlist)</option>
+                    <option value="VIP">VIP (Green Priority)</option>
+                    <option value="STAFF" selected>STAFF (Blue Authorized)</option>
+                    <option value="UNKNOWN_REPEAT">UNKNOWN_REPEAT (Track Record)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="modal-notes">Notes</label>
+                <input type="text" id="modal-notes" class="form-control" placeholder="Optional remarks...">
+            </div>
+
+            <div id="modal-error" style="display:none; color: var(--danger); font-size: 13px; margin-bottom: 12px; padding: 8px; background: #fef2f2; border-radius: 4px;"></div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px;">
+                <button type="button" class="btn btn-outline" onclick="closeEnrollModal()">Cancel</button>
+                <button type="submit" class="btn btn-success" id="modal-submit-btn">✓ Enroll Active Face</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let _prevFrsAlerts = 0;
+    let _prevAnprAlerts = 0;
+
+    function setSource(src) {
+        document.getElementById('source').value = src;
+    }
+
+    function openEnrollModal() {
+        document.getElementById('modal-error').style.display = 'none';
+        document.getElementById('enroll-modal').classList.add('show');
+    }
+
+    function closeEnrollModal() {
+        document.getElementById('enroll-modal').classList.remove('show');
+    }
+
+    document.getElementById('stream-enroll-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('modal-submit-btn');
+        const err = document.getElementById('modal-error');
+        err.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Extracting Face...';
+
+        const payload = {
+            person_id: document.getElementById('modal-person-id').value.trim(),
+            name: document.getElementById('modal-name').value.trim(),
+            category: document.getElementById('modal-category').value,
+            notes: document.getElementById('modal-notes').value.trim(),
+        };
+
+        try {
+            const res = await fetch('/api/frs/enroll-live-stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                showToast(data.message);
+                closeEnrollModal();
+                document.getElementById('stream-enroll-form').reset();
+            } else {
+                err.textContent = data.message || 'Enrollment failed.';
+                err.style.display = 'block';
+            }
+        } catch(e) {
+            err.textContent = 'Communication error.';
+            err.style.display = 'block';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '✓ Enroll Active Face';
+        }
+    });
+
+    function beep() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            gain.gain.value = 0.15;
+            osc.frequency.value = 880;
+            osc.start();
+            osc.stop(ctx.currentTime + 0.15);
+        } catch(e) {}
+    }
+
+    function startStream() {
+        const errorBanner = document.getElementById('video-error-banner');
+        errorBanner.style.display = 'none';
+
+        const config = {
+            source: document.getElementById('source').value.trim(),
+            device: document.getElementById('device').value,
+            fp16: document.getElementById('fp16').checked,
+            enable_frs: document.getElementById('enable_frs').checked,
+            enable_anpr: document.getElementById('enable_anpr').checked,
+            enable_motion_alert: document.getElementById('enable_motion_alert').checked,
+            detect_skip: parseInt(document.getElementById('detect_skip').value) || 1,
+            detector_mode: document.getElementById('detector_mode').value,
+            exp_file: document.getElementById('exp_file').value,
+            ckpt_file: document.getElementById('ckpt_file').value,
+        };
+
+        fetch('/api/stream/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+        })
+        .then(r => r.json())
+        .then(data => {
+            showToast('Stream starting on ' + config.device.toUpperCase() + '...');
+            document.getElementById('btn-start').disabled = true;
+            document.getElementById('btn-stop').disabled = false;
+
+            // Show video feed
+            const feed = document.getElementById('video-feed');
+            const placeholder = document.getElementById('video-placeholder');
+            feed.src = '/stream/video?' + Date.now();
+            feed.style.display = 'block';
+            placeholder.style.display = 'none';
+        })
+        .catch(e => showToast('Failed to start stream', 'error'));
+    }
+
+    function stopStream() {
+        fetch('/api/stream/stop', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            showToast('Stream stopped');
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-stop').disabled = true;
+
+            const feed = document.getElementById('video-feed');
+            const placeholder = document.getElementById('video-placeholder');
+            feed.src = '';
+            feed.style.display = 'none';
+            placeholder.style.display = 'flex';
+        })
+        .catch(e => showToast('Failed to stop stream', 'error'));
+    }
+
+    const ALERT_STYLES = {
+        'NORMAL': { bg: '#f0fdf4', color: '#16a34a' },
+        'LOW':    { bg: '#fefce8', color: '#ca8a04' },
+        'MEDIUM': { bg: '#fff7ed', color: '#ea580c' },
+        'HIGH':   { bg: '#fef2f2', color: '#dc2626' },
+    };
+
+    function updateSidebar() {
+        fetch('/api/live/stats')
+        .then(r => r.json())
+        .then(data => {
+            // Status
+            const running = data.is_running;
+            const sideStatus = document.getElementById('side-status');
+            const sideStatusText = document.getElementById('side-status-text');
+            const statusPill = document.getElementById('status-pill');
+            const statusText = document.getElementById('status-text');
+
+            [sideStatus, statusPill].forEach(el => {
+                el.className = 'status-pill ' + (running ? 'live' : 'stopped');
+            });
+            sideStatusText.textContent = running ? 'LIVE' : 'STOPPED';
+            statusText.textContent = running ? 'LIVE' : 'STOPPED';
+
+            document.getElementById('btn-start').disabled = running;
+            document.getElementById('btn-stop').disabled = !running;
+
+            // Stats
+            document.getElementById('side-device').textContent = data.device || '—';
+            document.getElementById('side-fps').textContent = data.fps || '—';
+            document.getElementById('side-frame').textContent = data.frame_id || '—';
+            document.getElementById('side-source').textContent = data.source || '—';
+            document.getElementById('side-tracks').textContent = data.active_tracks;
+            document.getElementById('side-humans').textContent = data.human_count;
+            document.getElementById('side-vehicles').textContent = data.vehicle_count;
+
+            // Check Error Message
+            const errorBanner = document.getElementById('video-error-banner');
+            if (!running && data.error_message) {
+                errorBanner.textContent = '⚠️ ' + data.error_message;
+                errorBanner.style.display = 'block';
+            } else if (running) {
+                errorBanner.style.display = 'none';
+            }
+
+            // Alert
+            const alertLevel = data.motion_alert_level || 'NORMAL';
+            const alertEl = document.getElementById('side-alert');
+            const style = ALERT_STYLES[alertLevel] || ALERT_STYLES['NORMAL'];
+            alertEl.textContent = alertLevel;
+            alertEl.style.background = style.bg;
+            alertEl.style.color = style.color;
+
+            // FRS Match
+            if (data.last_frs_match) {
+                document.getElementById('frs-match-card').style.display = 'block';
+                document.getElementById('frs-match-empty').style.display = 'none';
+                document.getElementById('frs-name').textContent = data.last_frs_match.name;
+                document.getElementById('frs-id').textContent = data.last_frs_match.person_id;
+                document.getElementById('frs-conf').textContent = (data.last_frs_match.confidence * 100).toFixed(1) + '%';
+                const frsBadge = document.getElementById('frs-cat-badge');
+                frsBadge.textContent = data.last_frs_match.category;
+                frsBadge.className = 'badge ' + categoryBadgeClass(data.last_frs_match.category);
+                document.getElementById('frs-time').textContent = data.last_frs_match.timestamp;
+            }
+
+            // ANPR Match
+            if (data.last_anpr_match) {
+                document.getElementById('anpr-match-card').style.display = 'block';
+                document.getElementById('anpr-match-empty').style.display = 'none';
+                document.getElementById('anpr-plate').textContent = data.last_anpr_match.plate;
+                document.getElementById('anpr-conf').textContent = (data.last_anpr_match.confidence * 100).toFixed(1) + '%';
+                const anprBadge = document.getElementById('anpr-cat-badge');
+                anprBadge.textContent = data.last_anpr_match.category;
+                anprBadge.className = 'badge ' + categoryBadgeClass(data.last_anpr_match.category);
+                document.getElementById('anpr-time').textContent = data.last_anpr_match.timestamp;
+            }
+
+            // Session alerts
+            document.getElementById('side-frs-alerts').textContent = data.frs_alerts_session;
+            document.getElementById('side-anpr-alerts').textContent = data.anpr_alerts_session;
+
+            // Flash + beep on new alert
+            if (data.frs_alerts_session > _prevFrsAlerts || data.anpr_alerts_session > _prevAnprAlerts) {
+                const sidebar = document.getElementById('stats-sidebar');
+                sidebar.classList.remove('flash-alert');
+                void sidebar.offsetWidth;
+                sidebar.classList.add('flash-alert');
+                beep();
+            }
+            _prevFrsAlerts = data.frs_alerts_session;
+            _prevAnprAlerts = data.anpr_alerts_session;
+
+            // Show video if running and currently hidden
+            if (running) {
+                const feed = document.getElementById('video-feed');
+                if (feed.style.display === 'none') {
+                    feed.src = '/stream/video?' + Date.now();
+                    feed.style.display = 'block';
+                    document.getElementById('video-placeholder').style.display = 'none';
+                }
+            } else {
+                const feed = document.getElementById('video-feed');
+                const placeholder = document.getElementById('video-placeholder');
+                if (feed.style.display !== 'none') {
+                    feed.style.display = 'none';
+                    placeholder.style.display = 'flex';
+                }
+            }
+        })
+        .catch(() => {});
+    }
+
+    setInterval(updateSidebar, 1000);
+    updateSidebar();
+</script>
+{% endblock %}

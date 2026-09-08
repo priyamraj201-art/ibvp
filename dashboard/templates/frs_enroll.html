@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% set active_page = "frs_enroll" %}
+{% block title %}Live Face Enrollment — IBVAP Surveillance{% endblock %}
+
+{% block extra_css %}
+<style>
+    .enroll-mode-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 20px;
+        background: var(--header-bg);
+        padding: 4px;
+        border-radius: 8px;
+        width: fit-content;
+    }
+    .enroll-tab {
+        padding: 8px 18px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        transition: all 0.15s;
+    }
+    .enroll-tab.active {
+        background: var(--card);
+        color: var(--primary);
+        box-shadow: var(--shadow);
+    }
+    .camera-viewport {
+        position: relative;
+        width: 100%;
+        max-width: 480px;
+        height: 340px;
+        background: #0f172a;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .camera-viewport video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1); /* mirror */
+    }
+    .camera-viewport canvas {
+        display: none;
+    }
+    .camera-viewport .face-guide {
+        position: absolute;
+        width: 180px;
+        height: 240px;
+        border: 2px dashed rgba(37, 99, 235, 0.75);
+        border-radius: 50%;
+        pointer-events: none;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
+    }
+    .camera-viewport .snapshot-preview {
+        display: none;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+    }
+    .camera-actions {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Live Face Enrollment</h1>
+    <p>Capture face biometrics in real-time from webcam or upload an identity photo</p>
+</div>
+
+<div class="enroll-mode-tabs">
+    <button type="button" class="enroll-tab active" id="tab-webcam" onclick="switchMode('webcam')">🎥 Live Camera Capture</button>
+    <button type="button" class="enroll-tab" id="tab-upload" onclick="switchMode('upload')">📁 Upload Image File</button>
+</div>
+
+<div class="card" style="max-width: 680px;">
+    <form id="enroll-form">
+        <!-- ═══════ Live Webcam Section ═══════ -->
+        <div id="section-webcam">
+            <div class="camera-viewport">
+                <video id="webcam-video" autoplay playsinline muted></video>
+                <div class="face-guide" id="face-guide"></div>
+                <img id="snapshot-img" class="snapshot-preview" alt="Snapshot Preview">
+                <canvas id="snapshot-canvas"></canvas>
+            </div>
+
+            <div class="camera-actions">
+                <button type="button" class="btn btn-primary" id="btn-snap" onclick="takeSnapshot()">📸 Capture Snapshot</button>
+                <button type="button" class="btn btn-outline" id="btn-retake" onclick="retakeSnapshot()" style="display:none;">🔄 Retake Photo</button>
+                <span id="camera-status" style="font-size: 13px; color: var(--text-muted); align-self: center;">Align face within oval guide</span>
+            </div>
+        </div>
+
+        <!-- ═══════ Upload Section ═══════ -->
+        <div id="section-upload" style="display: none;">
+            <div class="form-group">
+                <label for="image-file">Select Face Image (.jpg, .jpeg, .png) *</label>
+                <input type="file" id="image-file" name="image" class="form-control" accept=".jpg,.jpeg,.png">
+            </div>
+        </div>
+
+        <!-- ═══════ Identity Metadata Fields ═══════ -->
+        <div class="form-row" style="margin-top: 16px;">
+            <div class="form-group">
+                <label for="person_id">Person ID *</label>
+                <input type="text" id="person_id" name="person_id" class="form-control" required placeholder="e.g. SUSPECT_007 or STAFF_101">
+            </div>
+            <div class="form-group">
+                <label for="name">Full Name *</label>
+                <input type="text" id="name" name="name" class="form-control" required placeholder="e.g. Alexander Pierce">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="category">Category</label>
+                <select id="category" name="category" class="form-control">
+                    <option value="WANTED">WANTED (Red Alert Hotlist)</option>
+                    <option value="SUSPECT">SUSPECT (Orange Watchlist)</option>
+                    <option value="VIP">VIP (Green Priority)</option>
+                    <option value="STAFF" selected>STAFF (Blue Authorized)</option>
+                    <option value="UNKNOWN_REPEAT">UNKNOWN_REPEAT (Track Record)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="enrolled_by">Enrolled By</label>
+                <input type="text" id="enrolled_by" name="enrolled_by" class="form-control" value="operator">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="notes">Notes / Case Details</label>
+            <textarea id="notes" name="notes" class="form-control" rows="2" placeholder="Forensic details or reason for watchlist inclusion..."></textarea>
+        </div>
+
+        <div id="enroll-error" style="display:none; color: var(--danger); font-size: 14px; margin-bottom: 14px; padding: 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px;"></div>
+
+        <button type="submit" class="btn btn-success" id="enroll-btn" style="width: 100%; justify-content: center; padding: 10px 16px; font-size: 15px;">
+            ✓ Register & Enroll Face Biometrics
+        </button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentMode = 'webcam';
+    let webcamStream = null;
+    let capturedBase64 = null;
+
+    async function initCamera() {
+        const video = document.getElementById('webcam-video');
+        const status = document.getElementById('camera-status');
+        try {
+            webcamStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+            });
+            video.srcObject = webcamStream;
+            status.textContent = 'Camera active. Position face in oval.';
+        } catch (err) {
+            status.textContent = '⚠️ Webcam unavailable. Please allow camera permissions or switch to File Upload.';
+            status.style.color = 'var(--danger)';
+        }
+    }
+
+    function stopCamera() {
+        if (webcamStream) {
+            webcamStream.getTracks().forEach(track => track.stop());
+            webcamStream = null;
+        }
+    }
+
+    function switchMode(mode) {
+        currentMode = mode;
+        document.getElementById('tab-webcam').classList.toggle('active', mode === 'webcam');
+        document.getElementById('tab-upload').classList.toggle('active', mode === 'upload');
+        document.getElementById('section-webcam').style.display = (mode === 'webcam') ? 'block' : 'none';
+        document.getElementById('section-upload').style.display = (mode === 'upload') ? 'block' : 'none';
+
+        if (mode === 'webcam') {
+            initCamera();
+        } else {
+            stopCamera();
+        }
+    }
+
+    function takeSnapshot() {
+        const video = document.getElementById('webcam-video');
+        const canvas = document.getElementById('snapshot-canvas');
+        const snapImg = document.getElementById('snapshot-img');
+        const faceGuide = document.getElementById('face-guide');
+        const btnSnap = document.getElementById('btn-snap');
+        const btnRetake = document.getElementById('btn-retake');
+        const status = document.getElementById('camera-status');
+
+        if (!video.videoWidth) {
+            showToast('Camera is not ready yet', 'error');
+            return;
+        }
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        capturedBase64 = canvas.toDataURL('image/jpeg', 0.95);
+        snapImg.src = capturedBase64;
+        snapImg.style.display = 'block';
+        video.style.display = 'none';
+        faceGuide.style.display = 'none';
+
+        btnSnap.style.display = 'none';
+        btnRetake.style.display = 'inline-flex';
+        status.textContent = '✓ Snapshot captured. Click Enroll below.';
+    }
+
+    function retakeSnapshot() {
+        const video = document.getElementById('webcam-video');
+        const snapImg = document.getElementById('snapshot-img');
+        const faceGuide = document.getElementById('face-guide');
+        const btnSnap = document.getElementById('btn-snap');
+        const btnRetake = document.getElementById('btn-retake');
+        const status = document.getElementById('camera-status');
+
+        capturedBase64 = null;
+        snapImg.style.display = 'none';
+        video.style.display = 'block';
+        faceGuide.style.display = 'block';
+
+        btnSnap.style.display = 'inline-flex';
+        btnRetake.style.display = 'none';
+        status.textContent = 'Position face and click Capture.';
+    }
+
+    document.getElementById('enroll-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('enroll-btn');
+        const errorDiv = document.getElementById('enroll-error');
+        errorDiv.style.display = 'none';
+
+        const formData = new FormData();
+        formData.append('person_id', document.getElementById('person_id').value.trim());
+        formData.append('name', document.getElementById('name').value.trim());
+        formData.append('category', document.getElementById('category').value);
+        formData.append('enrolled_by', document.getElementById('enrolled_by').value.trim());
+        formData.append('notes', document.getElementById('notes').value.trim());
+
+        if (currentMode === 'webcam') {
+            if (!capturedBase64) {
+                errorDiv.textContent = 'Please click "Capture Snapshot" before submitting.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            formData.append('image_base64', capturedBase64);
+        } else {
+            const fileInput = document.getElementById('image-file');
+            if (!fileInput.files || !fileInput.files[0]) {
+                errorDiv.textContent = 'Please choose a face image file.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            formData.append('image', fileInput.files[0]);
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Extracting ArcFace Biometrics...';
+
+        try {
+            const res = await fetch('/api/frs/enroll', { method: 'POST', body: formData });
+            const data = await res.json();
+
+            if (data.success) {
+                showToast(data.message);
+                stopCamera();
+                setTimeout(() => { window.location.href = '/frs/identities'; }, 1200);
+            } else {
+                errorDiv.textContent = data.message || 'Enrollment failed.';
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = '✓ Register & Enroll Face Biometrics';
+            }
+        } catch (err) {
+            errorDiv.textContent = 'Server communication error. Please try again.';
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = '✓ Register & Enroll Face Biometrics';
+        }
+    });
+
+    // Start webcam on initial load
+    window.addEventListener('load', () => {
+        initCamera();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% set active_page = "overview" %}
+{% block title %}Overview — IBVAP Surveillance{% endblock %}
+
+{% block content %}
+<meta http-equiv="refresh" content="5">
+
+<div class="page-header">
+    <h1>Dashboard Overview</h1>
+    <p>System-wide surveillance summary — auto-refreshes every 5 seconds</p>
+</div>
+
+<!-- Stat Cards -->
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="stat-label">Enrolled Faces</div>
+        <div class="stat-value">{{ frs_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Watchlist Plates</div>
+        <div class="stat-value">{{ anpr_count }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Face Alerts Today</div>
+        <div class="stat-value" style="color: {% if frs_alerts_today > 0 %}var(--danger){% else %}var(--text){% endif %};">{{ frs_alerts_today }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">ANPR Alerts Today</div>
+        <div class="stat-value" style="color: {% if anpr_alerts_today > 0 %}var(--danger){% else %}var(--text){% endif %};">{{ anpr_alerts_today }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Last FRS Match</div>
+        {% if last_frs %}
+        <div class="stat-value" style="font-size: 16px;">{{ last_frs.name }}</div>
+        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+            <span class="badge badge-{{ last_frs.category|lower }}">{{ last_frs.category }}</span>
+            {{ (last_frs.confidence * 100)|round(1) }}% — {{ last_frs.timestamp }}
+        </div>
+        {% else %}
+        <div style="color: var(--text-muted); font-size: 14px; margin-top: 8px;">No matches</div>
+        {% endif %}
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Last ANPR Match</div>
+        {% if last_anpr %}
+        <div class="stat-value" style="font-size: 16px;">{{ last_anpr.plate }}</div>
+        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+            <span class="badge badge-{{ last_anpr.category|lower }}">{{ last_anpr.category }}</span>
+            {{ (last_anpr.confidence * 100)|round(1) }}% — {{ last_anpr.timestamp }}
+        </div>
+        {% else %}
+        <div style="color: var(--text-muted); font-size: 14px; margin-top: 8px;">No matches</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Recent Flagged Tables -->
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">Recent FRS Alerts (Flagged)</div>
+        {% if recent_frs_flagged %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Name</th>
+                        <th>Person ID</th>
+                        <th>Category</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in recent_frs_flagged %}
+                    <tr>
+                        <td>{{ r.timestamp }}</td>
+                        <td><strong>{{ r.name }}</strong></td>
+                        <td><code>{{ r.person_id }}</code></td>
+                        <td><span class="badge badge-{{ r.category|lower }}">{{ r.category }}</span></td>
+                        <td>{{ (r.confidence * 100)|round(1) }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">✅</div>
+            <p>No flagged face detections yet</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="card-header">Recent ANPR Alerts (Flagged)</div>
+        {% if recent_anpr_flagged %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Plate</th>
+                        <th>Category</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in recent_anpr_flagged %}
+                    <tr>
+                        <td>{{ r.timestamp }}</td>
+                        <td><strong>{{ r.plate_number }}</strong></td>
+                        <td><span class="badge badge-{{ r.alert_category|lower }}">{{ r.alert_category }}</span></td>
+                        <td>{{ (r.confidence * 100)|round(1) }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">✅</div>
+            <p>No flagged plate detections yet</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

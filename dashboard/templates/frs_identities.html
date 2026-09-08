@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% set active_page = "frs_identities" %}
+{% block title %}FRS Identities — IBVAP Surveillance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>FRS — Enrolled Identities</h1>
+    <p>Biometric face database — {{ identities|length }} enrolled identities</p>
+</div>
+
+<div class="toolbar">
+    <div class="search-bar" style="flex: 1; max-width: 400px; margin-bottom: 0;">
+        <input type="text" id="search-identities" placeholder="Search by name, ID, category..." onkeyup="filterTable()">
+    </div>
+    <div class="spacer"></div>
+    <a href="/frs/enroll" class="btn btn-primary">+ Enroll New Face</a>
+</div>
+
+<div class="card">
+    {% if identities %}
+    <div class="table-wrap">
+        <table id="identities-table">
+            <thead>
+                <tr>
+                    <th>Person ID</th>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Face Count</th>
+                    <th>Enrolled At</th>
+                    <th>Enrolled By</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in identities %}
+                <tr>
+                    <td><code>{{ i.person_id }}</code></td>
+                    <td><strong>{{ i.name }}</strong></td>
+                    <td><span class="badge badge-{{ i.category|lower }}">{{ i.category }}</span></td>
+                    <td>{{ i.face_count }}</td>
+                    <td>{{ i.enrolled_at }}</td>
+                    <td>{{ i.enrolled_by }}</td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ i.notes }}">{{ i.notes or "—" }}</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" onclick="deleteIdentity('{{ i.person_id }}')">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">👤</div>
+        <p>No enrolled identities. <a href="/frs/enroll">Enroll a new face</a> or seed sample data from <a href="/settings">Settings</a>.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function filterTable() {
+        const q = document.getElementById('search-identities').value.toLowerCase();
+        document.querySelectorAll('#identities-table tbody tr').forEach(row => {
+            row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+    }
+
+    function deleteIdentity(personId) {
+        if (!confirm('Delete identity "' + personId + '"? This cannot be undone.')) return;
+        fetch('/api/frs/identity/' + encodeURIComponent(personId), { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Identity deleted');
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    showToast(data.message || 'Delete failed', 'error');
+                }
+            })
+            .catch(() => showToast('Delete failed', 'error'));
+    }
+</script>
+{% endblock %}

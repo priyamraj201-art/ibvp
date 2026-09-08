@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% set active_page = "anpr_watchlist" %}
+{% block title %}ANPR Watchlist — IBVAP Surveillance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>ANPR — Watchlist</h1>
+    <p>Flagged vehicle license plates — {{ watchlist|length }} entries</p>
+</div>
+
+<div class="toolbar">
+    <div class="search-bar" style="flex: 1; max-width: 400px; margin-bottom: 0;">
+        <input type="text" id="search-watchlist" placeholder="Search by plate, owner, category..." onkeyup="filterTable()">
+    </div>
+    <div class="spacer"></div>
+    <a href="/anpr/add" class="btn btn-primary">+ Add Plate</a>
+</div>
+
+<div class="card">
+    {% if watchlist %}
+    <div class="table-wrap">
+        <table id="watchlist-table">
+            <thead>
+                <tr>
+                    <th>Plate Number</th>
+                    <th>Owner Name</th>
+                    <th>Alert Category</th>
+                    <th>Notes</th>
+                    <th>Added On</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in watchlist %}
+                <tr>
+                    <td><strong style="font-family: monospace; font-size: 15px; letter-spacing: 1px;">{{ w.plate_number }}</strong></td>
+                    <td>{{ w.owner_name or "—" }}</td>
+                    <td><span class="badge badge-{{ w.alert_category|lower }}">{{ w.alert_category }}</span></td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ w.notes }}">{{ w.notes or "—" }}</td>
+                    <td>{{ w.created_at }}</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" onclick="deletePlate('{{ w.plate_number }}')">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">🚗</div>
+        <p>No watchlist entries. <a href="/anpr/add">Add a plate</a> or seed sample data from <a href="/settings">Settings</a>.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function filterTable() {
+        const q = document.getElementById('search-watchlist').value.toLowerCase();
+        document.querySelectorAll('#watchlist-table tbody tr').forEach(row => {
+            row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+    }
+
+    function deletePlate(plate) {
+        if (!confirm('Delete plate "' + plate + '" from watchlist?')) return;
+        fetch('/api/anpr/plate/' + encodeURIComponent(plate), { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Plate removed');
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    showToast(data.message || 'Delete failed', 'error');
+                }
+            })
+            .catch(() => showToast('Delete failed', 'error'));
+    }
+</script>
+{% endblock %}

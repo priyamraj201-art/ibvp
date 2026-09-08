@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% set active_page = "frs_logs" %}
+{% block title %}FRS Recognition Logs — IBVAP Surveillance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>FRS — Recognition Logs</h1>
+    <p>Facial recognition audit trail — auto-refreshes every 5 seconds</p>
+</div>
+
+<div class="toolbar">
+    <form method="GET" action="/frs/logs" style="display: flex; gap: 12px; align-items: end; flex-wrap: wrap;">
+        <div class="form-group" style="margin-bottom: 0;">
+            <label for="category" style="font-size: 12px;">Category</label>
+            <select name="category" id="category" class="form-control" style="width: 140px;">
+                <option value="">All</option>
+                <option value="WANTED" {% if filter_category == 'WANTED' %}selected{% endif %}>WANTED</option>
+                <option value="SUSPECT" {% if filter_category == 'SUSPECT' %}selected{% endif %}>SUSPECT</option>
+                <option value="VIP" {% if filter_category == 'VIP' %}selected{% endif %}>VIP</option>
+                <option value="STAFF" {% if filter_category == 'STAFF' %}selected{% endif %}>STAFF</option>
+                <option value="UNKNOWN" {% if filter_category == 'UNKNOWN' %}selected{% endif %}>UNKNOWN</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+            <label for="date_from" style="font-size: 12px;">From</label>
+            <input type="date" name="date_from" id="date_from" class="form-control" style="width: 150px;" value="{{ filter_date_from }}">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+            <label for="date_to" style="font-size: 12px;">To</label>
+            <input type="date" name="date_to" id="date_to" class="form-control" style="width: 150px;" value="{{ filter_date_to }}">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        <a href="/frs/logs" class="btn btn-outline btn-sm">Clear</a>
+    </form>
+</div>
+
+<div class="card">
+    {% if logs %}
+    <div class="table-wrap">
+        <table id="frs-logs-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Track ID</th>
+                    <th>Person ID</th>
+                    <th>Name</th>
+                    <th>Confidence</th>
+                    <th>Category</th>
+                    <th>Flagged</th>
+                    <th>Camera</th>
+                </tr>
+            </thead>
+            <tbody id="frs-logs-body">
+                {% for l in logs %}
+                <tr>
+                    <td>{{ l.timestamp }}</td>
+                    <td>{{ l.track_id }}</td>
+                    <td><code>{{ l.person_id }}</code></td>
+                    <td><strong>{{ l.name }}</strong></td>
+                    <td>
+                        <div class="conf-bar">
+                            <div class="conf-bar-track">
+                                <div class="conf-bar-fill" style="width: {{ (l.confidence * 100)|round }}%; background: {% if l.confidence >= 0.8 %}#22c55e{% elif l.confidence >= 0.5 %}#facc15{% else %}#dc2626{% endif %};"></div>
+                            </div>
+                            <span class="conf-bar-label">{{ (l.confidence * 100)|round(1) }}%</span>
+                        </div>
+                    </td>
+                    <td><span class="badge badge-{{ l.category|lower }}">{{ l.category }}</span></td>
+                    <td>
+                        {% if l.is_flagged %}
+                        <span class="badge badge-alert">ALERT</span>
+                        {% else %}
+                        <span class="badge badge-ok">OK</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ l.camera_id }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p>No recognition logs found</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-refresh logs every 5 seconds
+    setInterval(() => {
+        const params = new URLSearchParams(window.location.search);
+        fetch('/frs/logs?' + params.toString())
+            .then(r => r.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newBody = doc.getElementById('frs-logs-body');
+                const currentBody = document.getElementById('frs-logs-body');
+                if (newBody && currentBody) {
+                    currentBody.innerHTML = newBody.innerHTML;
+                }
+            })
+            .catch(() => {});
+    }, 5000);
+</script>
+{% endblock %}

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% set active_page = "settings" %}
+{% block title %}Settings — IBVAP Surveillance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Settings</h1>
+    <p>System configuration, database status, and management utilities</p>
+</div>
+
+<div class="grid-2">
+    <!-- Database Paths -->
+    <div class="card">
+        <div class="card-header">Database Paths</div>
+        <div style="margin-bottom: 12px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">FRS Database</label>
+            <div style="font-family: monospace; font-size: 13px; background: var(--row-alt); padding: 8px 12px; border-radius: 4px; margin-top: 4px; word-break: break-all;">{{ frs_db_path }}</div>
+        </div>
+        <div>
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">ANPR Database</label>
+            <div style="font-family: monospace; font-size: 13px; background: var(--row-alt); padding: 8px 12px; border-radius: 4px; margin-top: 4px; word-break: break-all;">{{ anpr_db_path }}</div>
+        </div>
+    </div>
+
+    <!-- Module Status -->
+    <div class="card">
+        <div class="card-header">Module Status</div>
+        <table style="width: 100%;">
+            {% for name, exists in checks.items() %}
+            <tr>
+                <td style="padding: 8px 0;">{{ name }}</td>
+                <td style="padding: 8px 0; text-align: right;">
+                    {% if exists %}
+                    <span style="color: var(--success); font-weight: 600;">✓ Found</span>
+                    {% else %}
+                    <span style="color: var(--danger); font-weight: 600;">✗ Missing</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-top: 24px;">
+    <!-- Category Color Legends -->
+    <div class="card">
+        <div class="card-header">FRS Category Colors</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
+            <span class="badge badge-wanted">WANTED</span>
+            <span class="badge badge-suspect">SUSPECT</span>
+            <span class="badge badge-vip">VIP</span>
+            <span class="badge badge-staff">STAFF</span>
+            <span class="badge badge-unknown_repeat">UNKNOWN_REPEAT</span>
+        </div>
+
+        <div class="card-header" style="margin-top: 16px;">ANPR Category Colors</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <span class="badge badge-stolen">STOLEN</span>
+            <span class="badge badge-wanted">WANTED</span>
+            <span class="badge badge-suspicious">SUSPICIOUS</span>
+            <span class="badge badge-vip">VIP</span>
+            <span class="badge badge-unregistered">UNREGISTERED</span>
+            <span class="badge badge-expired_permit">EXPIRED_PERMIT</span>
+        </div>
+    </div>
+
+    <!-- Alert Thresholds -->
+    <div class="card">
+        <div class="card-header">Motion Alert Thresholds</div>
+        <table style="width: 100%;">
+            <tr>
+                <td style="padding: 8px 0;">
+                    <span style="display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: #facc15; margin-right: 8px; vertical-align: middle;"></span>
+                    LOW
+                </td>
+                <td style="padding: 8px 0; text-align: right; font-weight: 600;">≥ 20 px/s</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0;">
+                    <span style="display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: #f97316; margin-right: 8px; vertical-align: middle;"></span>
+                    MEDIUM
+                </td>
+                <td style="padding: 8px 0; text-align: right; font-weight: 600;">≥ 60 px/s</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0;">
+                    <span style="display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: #dc2626; margin-right: 8px; vertical-align: middle;"></span>
+                    HIGH
+                </td>
+                <td style="padding: 8px 0; text-align: right; font-weight: 600;">≥ 120 px/s</td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<!-- Seed & Management -->
+<div class="grid-2" style="margin-top: 24px;">
+    <div class="card">
+        <div class="card-header">Seed Sample Data</div>
+        <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 16px;">
+            Populate databases with sample watchlist entries for testing and demonstration.
+        </p>
+        <div style="display: flex; gap: 12px;">
+            <button class="btn btn-primary" onclick="seedFrs()">Seed FRS Identities</button>
+            <button class="btn btn-primary" onclick="seedAnpr()">Seed ANPR Watchlist</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">CLI Commands</div>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Run the tracker standalone from the command line:</p>
+
+        <div class="code-block">
+            <button class="copy-btn" onclick="copyText(this.nextElementSibling.textContent)">Copy</button>
+            <code># Basic tracking with motion alerts
+python tools/demo_track.py video --path videos/sample.mp4 \
+  -f exps/example/mot/yolox_x_mix_det.py \
+  -c pretrained/bytetrack_x_mot17.pth.tar \
+  --device gpu --alert</code>
+        </div>
+
+        <div class="code-block" style="margin-top: 12px;">
+            <button class="copy-btn" onclick="copyText(this.nextElementSibling.textContent)">Copy</button>
+            <code># Full pipeline: Tracking + ANPR + FRS
+python tools/demo_track.py video --path videos/sample.mp4 \
+  -f exps/example/mot/yolox_x_mix_det.py \
+  -c pretrained/bytetrack_x_mot17.pth.tar \
+  --device gpu --anpr --frs --alert</code>
+        </div>
+
+        <div class="code-block" style="margin-top: 12px;">
+            <button class="copy-btn" onclick="copyText(this.nextElementSibling.textContent)">Copy</button>
+            <code># Start dashboard server
+python dashboard/server.py --port 8000</code>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function seedFrs() {
+        const res = await fetch('/api/frs/seed', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message, data.success ? 'success' : 'error');
+    }
+
+    async function seedAnpr() {
+        const res = await fetch('/api/anpr/seed', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message, data.success ? 'success' : 'error');
+    }
+</script>
+{% endblock %}
