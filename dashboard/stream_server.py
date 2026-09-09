@@ -75,21 +75,25 @@ class CameraStats:
     anpr_alerts_session: int = 0
 
 
-def create_placeholder_jpeg(name: str = "Camera", status: str = "OFFLINE", width: int = 640, height: int = 360) -> bytes:
-    """Generate a clean dark placeholder frame for offline / connecting cameras."""
+def create_placeholder_jpeg(name: str = "Camera", status: str = "OFFLINE", width: int = 640, height: int = 360, detail: str = "") -> bytes:
+    """Generate a clean dark placeholder frame for offline / connecting cameras with diagnostic detail."""
     img = np.zeros((height, width, 3), dtype=np.uint8)
     # Dark subtle gradient background
     cv2.rectangle(img, (0, 0), (width, height), (15, 23, 42), -1)
     # Border
     cv2.rectangle(img, (2, 2), (width - 2, height - 2), (51, 65, 85), 2)
     # Title
-    cv2.putText(img, name.upper(), (30, height // 2 - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (241, 245, 249), 2)
+    cv2.putText(img, name.upper(), (30, height // 2 - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (241, 245, 249), 2)
     # Status
-    color = (34, 197, 94) if status == "LIVE" else ((245, 158, 11) if status == "CONNECTING" else (100, 116, 139))
-    cv2.putText(img, f"STATUS: {status}", (30, height // 2 + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-    cv2.putText(img, "IBVAP Multi-Camera Ingestion Cluster", (30, height - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (148, 163, 184), 1)
+    color = (34, 197, 94) if "LIVE" in status else ((245, 158, 11) if "CONNECTING" in status else ((239, 68, 68) if "ERROR" in status or "BUSY" in status else (100, 116, 139)))
+    cv2.putText(img, f"STATUS: {status}", (30, height // 2 + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.58, color, 2)
+    # Detail / diagnostics
+    if detail:
+        cv2.putText(img, str(detail)[:70], (30, height // 2 + 42), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (248, 113, 113), 1)
+    cv2.putText(img, "IBVAP Multi-Camera Ingestion Cluster", (30, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (148, 163, 184), 1)
     _, jpeg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
     return jpeg.tobytes()
+
 
 
 class CameraStreamState:
@@ -173,6 +177,7 @@ class ZeroLagCapture:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.source_label = ""
+        self.error_label = ""
         self.is_video_file = False
         self.is_opened = False
         self.frame_count = 0
@@ -180,6 +185,7 @@ class ZeroLagCapture:
     def start(self) -> bool:
         cap, label, is_file = self._open_source()
         if cap is None or not cap.isOpened():
+            self.error_label = label
             return False
 
         self._cap = cap
@@ -194,7 +200,7 @@ class ZeroLagCapture:
     def _open_source(self) -> Tuple[Optional[cv2.VideoCapture], str, bool]:
         src = self.source_str
 
-        # 1. Numeric webcam index (e.g. "0", "1")
+        # 1. Numeric webcam index (e.g. "0", "1", "2")
         if src.isdigit():
             cam_idx = int(src)
             # Try DirectShow on Windows first for fast startup
@@ -215,27 +221,45 @@ class ZeroLagCapture:
                 pass
             return None, f"Webcam index {cam_idx} unavailable", False
 
-        # 2. DroidCam HTTP MJPEG stream (e.g. http://192.168.137.15:4747/video)
+        # 2. DroidCam HTTP MJPEG stream (e.g. http://10.131.46.15:4747/video)
         # 3. RTSP stream (e.g. rtsp://192.168.1.100:554/live)
         if src.startswith("http://") or src.startswith("https://") or src.startswith("rtsp://"):
-            try:
-                # Use FFMPEG backend for network streams
-                cap = cv2.VideoCapture(src, cv2.CAP_FFMPEG)
-                if cap.isOpened():
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    label = "DroidCam Stream" if ":4747" in src else ("RTSP Cam" if "rtsp://" in src else "Network Stream")
-                    return cap, f"{label} ({src})", False
-            except Exception as e:
-                logger.warning(f"[ZeroLagCapture] Error opening network stream {src}: {e}")
+            # Check if DroidCam phone is currently connected to PC app
+            if ":4747" in src:
+                try:
+                    import urllib.request
+                    req = urllib.request.Request(src, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req, timeout=1.5) as resp:
+                        body_prefix = resp.read(512).decode("utf-8", errors="ignore").lower()
+                        if "busy" in body_prefix or "connected to the pc client" in body_prefix:
+                            err = "DroidCam phone is busy: connected to PC Client. Close DroidCamApp or use Webcam '2'."
+                            logger.warning(f"[ZeroLagCapture] {err}")
+                            return None, err, False
+                except Exception:
+                    pass
 
-            # Fallback to default backend
-            try:
-                cap = cv2.VideoCapture(src)
-                if cap.isOpened():
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    return cap, src, False
-            except Exception:
-                pass
+            candidate_urls = [src]
+            if ":4747" in src and src.endswith("/video"):
+                candidate_urls.append(src.replace("/video", "/mjpegfeed"))
+
+            for candidate in candidate_urls:
+                try:
+                    cap = cv2.VideoCapture(candidate, cv2.CAP_FFMPEG)
+                    if cap.isOpened():
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        label = "DroidCam Stream" if ":4747" in candidate else ("RTSP Cam" if "rtsp://" in candidate else "Network Stream")
+                        return cap, f"{label} ({candidate})", False
+                except Exception as e:
+                    logger.warning(f"[ZeroLagCapture] Error opening network stream {candidate}: {e}")
+
+                try:
+                    cap = cv2.VideoCapture(candidate)
+                    if cap.isOpened():
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        return cap, candidate, False
+                except Exception:
+                    pass
+
             return None, f"Could not connect to stream: {src}", False
 
         # 4. Local video file path
@@ -306,14 +330,14 @@ class ZeroLagCapture:
 
     def stop(self):
         self._stop_event.set()
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=1.5)
         if self._cap is not None:
             try:
                 self._cap.release()
             except Exception:
                 pass
             self._cap = None
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=0.5)
         self.is_opened = False
 
 
@@ -410,10 +434,13 @@ class CameraPipelineWorker(threading.Thread):
         self.source_url = cam_info.get("url", "0")
         self.cfg = pipeline_cfg
         self.state = stream_state
+        self.cap: Optional[ZeroLagCapture] = None
         self._stop_event = threading.Event()
 
     def stop(self):
         self._stop_event.set()
+        if self.cap is not None:
+            self.cap.stop()
 
     def run(self):
         try:
@@ -425,19 +452,19 @@ class CameraPipelineWorker(threading.Thread):
             traceback.print_exc()
             self.state.update_stats(is_running=False, status="ERROR", error_message=err_msg)
         finally:
-            self.state.update_stats(is_running=False, status="OFFLINE")
+            self.state.update_stats(is_running=False, status="OFFLINE", fps=0.0)
 
     def _run_loop(self):
         self.state.update_stats(is_running=True, status="CONNECTING", error_message="")
         logger.info(f"[CamWorker-{self.cam_id}] Starting capture for {self.cam_name} from: {self.source_url}")
 
         # Start decoupled Zero-Lag Capture
-        cap = ZeroLagCapture(self.source_url)
-        if not cap.start():
-            err = f"Failed to connect to source: {self.source_url}"
+        self.cap = ZeroLagCapture(self.source_url)
+        if not self.cap.start():
+            err = getattr(self.cap, 'error_label', '') or f"Failed to connect: {self.source_url}"
             logger.warning(f"[CamWorker-{self.cam_id}] {err}")
             self.state.update_stats(is_running=False, status="ERROR", error_message=err)
-            self.state.set_frame(create_placeholder_jpeg(self.cam_name, "ERROR (NO SIGNAL)"))
+            self.state.set_frame(create_placeholder_jpeg(self.cam_name, "ERROR", detail=err))
             return
 
         # Ensure shared detector is loaded
@@ -446,7 +473,7 @@ class CameraPipelineWorker(threading.Thread):
         self.state.update_stats(
             is_running=True,
             status="LIVE",
-            source=cap.source_label,
+            source=self.cap.source_label,
             device=SHARED_DETECTOR.device_name,
             error_message="",
         )
@@ -502,10 +529,12 @@ class CameraPipelineWorker(threading.Thread):
         frame_id = 0
         frs_alert_count = 0
         anpr_alert_count = 0
-        detect_skip = max(1, int(self.cfg.get("detect_skip", 1)))
+        detect_skip = max(1, int(self.cfg.get("detect_skip", 2)))
         _last_outputs = None
         _last_img_info = None
         _last_valid_targets: list = []
+        last_frame_time = time.time()
+        smooth_fps = 30.0
 
         ALERT_COLORS = {
             "NORMAL": "#22c55e", "LOW": "#facc15",
@@ -515,12 +544,20 @@ class CameraPipelineWorker(threading.Thread):
         logger.info(f"[CamWorker-{self.cam_id}] Pipeline active for {self.cam_name}")
 
         while not self._stop_event.is_set():
-            ret, frame = cap.read_latest()
+            if self.cap is None:
+                break
+            ret, frame = self.cap.read_latest()
             if not ret or frame is None:
                 time.sleep(0.01)
                 continue
 
             frame_id += 1
+            now_t = time.time()
+            dt = now_t - last_frame_time
+            last_frame_time = now_t
+            if dt > 0:
+                instant_fps = 1.0 / max(1e-4, dt)
+                smooth_fps = 0.85 * smooth_fps + 0.15 * instant_fps
             valid_targets: list = []
             human_count = 0
             vehicle_count = 0
@@ -702,11 +739,19 @@ class CameraPipelineWorker(threading.Thread):
                 cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 128), 1, cv2.LINE_AA,
             )
 
+            # Fast preview downscaling for web streaming (saves 80% CPU & bandwidth)
+            h_im, w_im = online_im.shape[:2]
+            if w_im > 960:
+                scale_w = 960.0 / w_im
+                preview_im = cv2.resize(online_im, (960, int(h_im * scale_w)), interpolation=cv2.INTER_LINEAR)
+            else:
+                preview_im = online_im
+
             # Encode to JPEG and publish to state
-            _, jpeg = cv2.imencode(".jpg", online_im, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            _, jpeg = cv2.imencode(".jpg", preview_im, [cv2.IMWRITE_JPEG_QUALITY, 75])
             self.state.set_frame(jpeg.tobytes())
             self.state.update_stats(
-                fps=1.0 / max(1e-5, timer.average_time) if SHARED_DETECTOR.predictor else 30.0,
+                fps=round(smooth_fps, 1),
                 frame_id=frame_id,
                 active_tracks=len(valid_targets),
                 human_count=human_count,
@@ -715,16 +760,17 @@ class CameraPipelineWorker(threading.Thread):
                 motion_alert_color=ALERT_COLORS.get(current_alert, "#22c55e"),
             )
 
-            # Small sleep to yield time to other camera threads
-            time.sleep(0.005)
+            # Responsive yield
+            time.sleep(0.004)
 
         # Cleanup
-        cap.stop()
+        if self.cap is not None:
+            self.cap.stop()
         if frs_pipeline:
             frs_pipeline.stop()
         if anpr_pipeline:
             anpr_pipeline.stop()
-        self.state.update_stats(is_running=False, status="OFFLINE")
+        self.state.update_stats(is_running=False, status="OFFLINE", fps=0.0)
         self.state.set_frame(create_placeholder_jpeg(self.cam_name, "OFFLINE"))
         logger.info(f"[CamWorker-{self.cam_id}] Stopped cleanly.")
 
@@ -828,10 +874,9 @@ class MultiCameraManager:
             if cam_id in self.workers:
                 worker = self.workers[cam_id]
                 worker.stop()
-                worker.join(timeout=2)
                 del self.workers[cam_id]
                 if cam_id in self.states:
-                    self.states[cam_id].update_stats(is_running=False, status="OFFLINE")
+                    self.states[cam_id].update_stats(is_running=False, status="OFFLINE", fps=0.0)
                     self.states[cam_id].set_frame(create_placeholder_jpeg(self.states[cam_id].stats.name, "OFFLINE"))
                 logger.info(f"[MultiCameraManager] Camera {cam_id} stopped.")
                 return True
@@ -930,4 +975,7 @@ async def mjpeg_generator(stream_state: CameraStreamState):
                 b"--frame\r\n"
                 b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
             )
-        await asyncio.sleep(0.033)  # ~30 FPS frame pacing
+        if not stream_state.stats.is_running:
+            await asyncio.sleep(0.25)
+        else:
+            await asyncio.sleep(0.033)

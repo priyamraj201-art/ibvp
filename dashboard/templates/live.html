@@ -521,8 +521,8 @@
             </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
-            <label for="cluster-detect-skip">Frame Skip (1 = infer every frame)</label>
-            <input type="number" id="cluster-detect-skip" class="form-control" value="1" min="1" max="5">
+            <label for="cluster-detect-skip">Frame Skip (2 = 2x FPS Boost)</label>
+            <input type="number" id="cluster-detect-skip" class="form-control" value="2" min="1" max="5">
         </div>
         <div class="form-group" style="margin-bottom:0;">
             <label for="cluster-detector-mode">Routing Mode</label>
@@ -762,22 +762,55 @@
 
     async function startAllStreams() {
         const cfg = getClusterPipelineConfig();
+        camerasData.forEach(c => {
+            if (c.enabled !== false) {
+                c.is_running = true;
+                c.status = 'CONNECTING';
+                const btn = document.getElementById(`btn-toggle-${c.cam_id}`);
+                const dot = document.getElementById(`dot-cam-${c.cam_id}`);
+                if (btn) { btn.innerHTML = '⏹'; btn.title = 'Stop Feed'; }
+                if (dot) { dot.className = 'status-dot connecting'; }
+            }
+        });
         try {
             await fetch('/api/cameras/start_all', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(cfg),
             });
-            setTimeout(loadCameras, 500);
+            setTimeout(() => {
+                camerasData.forEach(c => {
+                    const img = document.getElementById(`img-cam-${c.cam_id}`);
+                    const placeholder = document.getElementById(`placeholder-cam-${c.cam_id}`);
+                    if (img && c.is_running) {
+                        img.src = `/stream/video/${c.cam_id}?t=${Date.now()}`;
+                        img.style.display = 'block';
+                    }
+                    if (placeholder && c.is_running) {
+                        placeholder.classList.add('hidden');
+                    }
+                });
+            }, 600);
         } catch (e) {
             alert('Error starting all streams: ' + e);
         }
     }
 
     async function stopAllStreams() {
+        camerasData.forEach(c => {
+            c.is_running = false;
+            c.status = 'OFFLINE';
+            const btn = document.getElementById(`btn-toggle-${c.cam_id}`);
+            const img = document.getElementById(`img-cam-${c.cam_id}`);
+            const placeholder = document.getElementById(`placeholder-cam-${c.cam_id}`);
+            const dot = document.getElementById(`dot-cam-${c.cam_id}`);
+            if (btn) { btn.innerHTML = '▶'; btn.title = 'Start Feed'; }
+            if (dot) { dot.className = 'status-dot'; }
+            if (img) { img.style.display = 'none'; img.src = ''; }
+            if (placeholder) { placeholder.classList.remove('hidden'); }
+        });
         try {
             await fetch('/api/cameras/stop_all', { method: 'POST' });
-            setTimeout(loadCameras, 500);
         } catch (e) {
             alert('Error stopping all streams: ' + e);
         }
@@ -787,17 +820,48 @@
         const cam = camerasData.find(c => c.cam_id === camId);
         if (!cam) return;
 
+        const btnToggle = document.getElementById(`btn-toggle-${camId}`);
+        const img = document.getElementById(`img-cam-${camId}`);
+        const placeholder = document.getElementById(`placeholder-cam-${camId}`);
+        const dot = document.getElementById(`dot-cam-${camId}`);
+
         if (cam.is_running) {
-            await fetch(`/api/cameras/${camId}/stop`, { method: 'POST' });
+            // Optimistic STOP
+            cam.is_running = false;
+            cam.status = 'OFFLINE';
+            if (btnToggle) { btnToggle.innerHTML = '▶'; btnToggle.title = 'Start Feed'; }
+            if (dot) { dot.className = 'status-dot'; }
+            if (img) { img.style.display = 'none'; img.src = ''; }
+            if (placeholder) { placeholder.classList.remove('hidden'); }
+
+            try {
+                await fetch(`/api/cameras/${camId}/stop`, { method: 'POST' });
+            } catch (e) {
+                console.error('Stop error:', e);
+            }
         } else {
+            // Optimistic START
+            cam.is_running = true;
+            cam.status = 'CONNECTING';
+            if (btnToggle) { btnToggle.innerHTML = '⏹'; btnToggle.title = 'Stop Feed'; }
+            if (dot) { dot.className = 'status-dot connecting'; }
+
             const cfg = getClusterPipelineConfig();
-            await fetch(`/api/cameras/${camId}/start`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(cfg),
-            });
+            try {
+                await fetch(`/api/cameras/${camId}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cfg),
+                });
+                if (img) {
+                    img.src = `/stream/video/${camId}?t=${Date.now()}`;
+                    img.style.display = 'block';
+                }
+                if (placeholder) { placeholder.classList.add('hidden'); }
+            } catch (e) {
+                console.error('Start error:', e);
+            }
         }
-        setTimeout(loadCameras, 500);
     }
 
     // ═══════════════════════════════════════════════
@@ -825,7 +889,7 @@
                             <button type="button" class="icon-btn" title="Focus View" onclick="focusCamera(${cam.cam_id})">
                                 🔍
                             </button>
-                            <button type="button" class="icon-btn" title="${cam.is_running ? 'Stop Feed' : 'Start Feed'}" onclick="toggleSingleStream(${cam.cam_id})">
+                            <button type="button" class="icon-btn" id="btn-toggle-${cam.cam_id}" title="${cam.is_running ? 'Stop Feed' : 'Start Feed'}" onclick="toggleSingleStream(${cam.cam_id})">
                                 ${cam.is_running ? '⏹' : '▶'}
                             </button>
                             <button type="button" class="icon-btn" title="Settings" onclick="openEditCameraModal(${cam.cam_id})">
@@ -888,10 +952,16 @@
             const dot = document.getElementById(`dot-cam-${cid}`);
             const img = document.getElementById(`img-cam-${cid}`);
             const placeholder = document.getElementById(`placeholder-cam-${cid}`);
+            const btnToggle = document.getElementById(`btn-toggle-${cid}`);
             const hudFps = document.getElementById(`hud-fps-${cid}`);
             const hudCounts = document.getElementById(`hud-counts-${cid}`);
             const hudAlert = document.getElementById(`hud-alert-${cid}`);
             const intelTag = document.getElementById(`intel-tag-${cid}`);
+
+            if (btnToggle) {
+                btnToggle.innerHTML = cam.is_running ? '⏹' : '▶';
+                btnToggle.title = cam.is_running ? 'Stop Feed' : 'Start Feed';
+            }
 
             if (tile) {
                 tile.className = `cam-tile ${cam.motion_alert_level === 'HIGH' ? 'alert-high' : (cam.motion_alert_level === 'MEDIUM' ? 'alert-medium' : (cam.motion_alert_level === 'LOW' ? 'alert-low' : ''))}`;
