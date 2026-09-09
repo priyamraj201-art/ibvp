@@ -1,674 +1,1248 @@
 {% extends "base.html" %}
 {% set active_page = "live" %}
-{% block title %}Live Feed — IBVAP Surveillance{% endblock %}
+{% block title %}Multi-Camera Surveillance Cluster — IBVAP{% endblock %}
 
 {% block extra_css %}
 <style>
-    .live-layout {
-        display: grid;
-        grid-template-columns: 1fr 340px;
-        gap: 20px;
-        align-items: start;
+    /* ═══════════════════════════════════════════════
+       Command Center Theme & Grid Layout
+       ═══════════════════════════════════════════════ */
+    .cluster-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-bottom: 20px;
     }
-    .video-panel .video-container {
-        background: #000;
+    .cluster-metrics-bar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .metric-pill {
+        background: var(--card);
+        border: 1px solid var(--border);
         border-radius: 8px;
+        padding: 8px 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        box-shadow: var(--shadow);
+    }
+    .metric-pill .metric-val {
+        font-weight: 700;
+        font-size: 15px;
+        color: var(--text);
+    }
+    .metric-pill .metric-lbl {
+        color: var(--text-muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* Toolbar */
+    .cluster-toolbar {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-bottom: 20px;
+        box-shadow: var(--shadow);
+    }
+    .toolbar-left, .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .btn-group {
+        display: inline-flex;
+        border-radius: 6px;
         overflow: hidden;
+        border: 1px solid var(--border);
+    }
+    .btn-group button {
+        padding: 7px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        border: none;
+        background: #f8fafc;
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .btn-group button.active {
+        background: var(--primary);
+        color: #ffffff;
+    }
+    .btn-group button:not(:last-child) {
+        border-right: 1px solid var(--border);
+    }
+
+    /* ═══════════════════════════════════════════════
+       2x2 Multi-Camera Grid
+       ═══════════════════════════════════════════════ */
+    .grid-view-container {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 18px;
+        margin-bottom: 24px;
+    }
+    @media (max-width: 900px) {
+        .grid-view-container {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .cam-tile {
+        background: #090d16;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: var(--shadow-lg);
         position: relative;
-        min-height: 400px;
+        transition: border-color 0.25s, box-shadow 0.25s;
     }
-    .video-panel .video-container img {
+    .cam-tile.alert-high {
+        border-color: #ef4444 !important;
+        box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+    }
+    .cam-tile.alert-medium {
+        border-color: #f97316 !important;
+        box-shadow: 0 0 12px rgba(249, 115, 22, 0.3);
+    }
+    .cam-tile.alert-low {
+        border-color: #eab308 !important;
+    }
+
+    .cam-tile-header {
+        background: #0f172a;
+        padding: 10px 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #1e293b;
+    }
+    .cam-info-wrap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #64748b;
+        display: inline-block;
+    }
+    .status-dot.live {
+        background: #22c55e;
+        box-shadow: 0 0 8px #22c55e;
+        animation: pulse-dot 1.8s infinite;
+    }
+    .status-dot.connecting {
+        background: #f59e0b;
+        animation: pulse-dot 1s infinite;
+    }
+    .status-dot.error {
+        background: #ef4444;
+    }
+    @keyframes pulse-dot {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.25); opacity: 0.7; }
+    }
+    .cam-title {
+        color: #f8fafc;
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: -0.2px;
+    }
+    .cam-loc {
+        color: #94a3b8;
+        font-size: 12px;
+        margin-left: 6px;
+    }
+    .cam-tile-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .icon-btn {
+        background: #1e293b;
+        border: 1px solid #334155;
+        color: #cbd5e1;
+        border-radius: 6px;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.15s;
+    }
+    .icon-btn:hover {
+        background: #334155;
+        color: #ffffff;
+    }
+
+    /* Video Box */
+    .cam-viewport {
+        position: relative;
         width: 100%;
-        display: block;
-        border-radius: 8px;
+        aspect-ratio: 16 / 9;
+        background: #020617;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
     }
-    .video-placeholder {
+    .cam-stream-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+    .cam-placeholder {
+        position: absolute;
+        inset: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        min-height: 400px;
-        color: #94a3b8;
-        font-size: 15px;
-        background: #0f172a;
-        border-radius: 8px;
-        padding: 24px;
-        text-align: center;
+        background: #020617;
+        color: #64748b;
+        gap: 8px;
+        font-size: 13px;
     }
-    .video-error-banner {
+    .cam-placeholder.hidden {
         display: none;
-        background: #fef2f2;
-        border: 1px solid #fecaca;
-        color: #dc2626;
-        padding: 12px 16px;
-        border-radius: 6px;
-        margin-top: 12px;
-        font-size: 14px;
-        font-weight: 500;
     }
-    .controls-panel {
-        margin-top: 16px;
+    .cam-placeholder span.icon {
+        font-size: 32px;
+        color: #475569;
     }
-    .controls-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-        margin-bottom: 12px;
-    }
-    .controls-grid.three-col {
-        grid-template-columns: 1fr 1fr 1fr;
-    }
-    .controls-grid.four-col {
-        grid-template-columns: repeat(4, 1fr);
-    }
-    .quick-sources {
+
+    /* Video HUD Overlays */
+    .hud-top-right {
+        position: absolute;
+        top: 8px;
+        right: 8px;
         display: flex;
-        flex-wrap: wrap;
         gap: 6px;
-        margin-top: 6px;
+        z-index: 10;
     }
-    .quick-sources button {
-        padding: 3px 8px;
-        font-size: 12px;
-        border-radius: 4px;
-        background: #f1f5f9;
-        border: 1px solid #cbd5e1;
-        cursor: pointer;
-        color: #334155;
-    }
-    .quick-sources button:hover {
-        background: #e2e8f0;
-        color: #0f172a;
-    }
-    .control-actions {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        margin-top: 16px;
-        flex-wrap: wrap;
-    }
-    .sidebar-section {
-        padding: 14px 0;
-        border-bottom: 1px solid var(--border);
-    }
-    .sidebar-section:last-child { border-bottom: none; }
-    .sidebar-section .section-title {
+    .hud-badge {
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(4px);
+        color: #ffffff;
         font-size: 11px;
+        font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
         text-transform: uppercase;
-        letter-spacing: 0.8px;
-        color: var(--text-muted);
-        font-weight: 700;
-        margin-bottom: 10px;
+        letter-spacing: 0.4px;
     }
-    .sidebar-stat {
+    .hud-bottom-left {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        display: flex;
+        gap: 6px;
+        z-index: 10;
+    }
+    .hud-bottom-right {
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+        display: flex;
+        gap: 6px;
+        z-index: 10;
+    }
+
+    .cam-tile-footer {
+        background: #0b1120;
+        padding: 8px 14px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 3px 0;
-        font-size: 14px;
+        border-top: 1px solid #1e293b;
+        font-size: 12px;
+        color: #94a3b8;
     }
-    .sidebar-stat .label { color: var(--text-muted); }
-    .sidebar-stat .value { font-weight: 600; }
+    .source-tag {
+        font-family: monospace;
+        color: #60a5fa;
+        max-width: 250px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 
-    .alert-pill {
-        display: inline-block;
-        padding: 4px 14px;
-        border-radius: 100px;
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
+    /* ═══════════════════════════════════════════════
+       1x1 Focus View
+       ═══════════════════════════════════════════════ */
+    .focus-view-container {
+        display: none;
+        grid-template-columns: 1fr 340px;
+        gap: 20px;
+        margin-bottom: 24px;
     }
-    .match-card {
-        background: var(--row-alt);
+    @media (max-width: 1050px) {
+        .focus-view-container {
+            grid-template-columns: 1fr;
+        }
+    }
+    .focus-video-box {
+        background: #000;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid #1e293b;
+        box-shadow: var(--shadow-lg);
+        position: relative;
+    }
+    .focus-video-box img {
+        width: 100%;
+        display: block;
+    }
+    .focus-camera-switcher {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+    }
+    .switcher-pill {
+        background: var(--card);
+        border: 1px solid var(--border);
         border-radius: 6px;
-        padding: 10px 12px;
-        margin-top: 8px;
+        padding: 6px 12px;
         font-size: 13px;
-        line-height: 1.6;
-    }
-    .match-card .match-name {
-        font-weight: 700;
-        font-size: 14px;
-        color: var(--text);
-    }
-    .match-card .match-detail {
-        color: var(--text-muted);
-    }
-    .advanced-toggle {
+        font-weight: 600;
         cursor: pointer;
-        font-size: 13px;
-        color: var(--primary);
-        margin-bottom: 12px;
-        user-select: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.15s;
     }
-    .advanced-toggle:hover { text-decoration: underline; }
-    .advanced-fields { display: none; margin-bottom: 12px; }
-    .advanced-fields.show { display: block; }
+    .switcher-pill:hover {
+        border-color: var(--primary);
+    }
+    .switcher-pill.active {
+        background: var(--primary);
+        color: #ffffff;
+        border-color: var(--primary);
+    }
+
+    /* Collapsible Settings Accordion */
+    .settings-drawer {
+        display: none;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 18px 20px;
+        margin-bottom: 20px;
+        box-shadow: var(--shadow);
+    }
+    .settings-drawer.open {
+        display: block;
+    }
 
     /* Modal */
-    .modal-backdrop {
+    .modal-overlay {
         display: none;
         position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(15, 23, 42, 0.6);
-        backdrop-filter: blur(2px);
+        inset: 0;
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(4px);
         z-index: 1000;
         align-items: center;
         justify-content: center;
     }
-    .modal-backdrop.show {
+    .modal-overlay.open {
         display: flex;
     }
-    .modal-dialog {
+    .modal-card {
         background: #ffffff;
-        border-radius: 8px;
-        box-shadow: var(--shadow-lg);
-        max-width: 520px;
+        border-radius: 10px;
         width: 90%;
-        padding: 24px;
-        position: relative;
+        max-width: 550px;
+        box-shadow: var(--shadow-lg);
+        overflow: hidden;
     }
-    .modal-close {
-        position: absolute;
-        top: 16px;
-        right: 16px;
-        background: transparent;
-        border: none;
-        font-size: 20px;
+    .modal-header {
+        padding: 16px 20px;
+        background: #f8fafc;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .modal-header h3 {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text);
+    }
+    .modal-body {
+        padding: 20px;
+    }
+    .modal-footer {
+        padding: 14px 20px;
+        background: #f8fafc;
+        border-top: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .preset-chips {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 6px;
+    }
+    .preset-chip {
+        padding: 4px 9px;
+        font-size: 12px;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
         cursor: pointer;
-        color: var(--text-muted);
+        color: #334155;
     }
-
-    @media (max-width: 1024px) {
-        .live-layout { grid-template-columns: 1fr; }
-        .controls-grid.four-col { grid-template-columns: 1fr 1fr; }
+    .preset-chip:hover {
+        background: #e2e8f0;
+        color: #0f172a;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>Live Feed</h1>
-    <p>Real-time GPU-accelerated multi-modal surveillance with live face and plate identification</p>
-</div>
-
-<div class="live-layout">
-    <!-- ═══════ Left: Video + Controls ═══════ -->
-    <div class="video-panel">
-        <div class="video-container" id="video-container">
-            <div class="video-placeholder" id="video-placeholder">
-                <span style="font-size: 36px; margin-bottom: 10px;">📹</span>
-                <span>Stream is stopped. Select source, hardware accelerator, and click <strong>▶ Start Stream</strong>.</span>
-            </div>
-            <img id="video-feed" src="" style="display:none;" alt="Live Feed">
-        </div>
-
-        <div id="video-error-banner" class="video-error-banner"></div>
-
-        <div class="controls-panel card">
-            <div class="card-header">Stream Controls</div>
-
-            <div class="controls-grid">
-                <div class="form-group">
-                    <label for="source">Source (Camera ID or Video File)</label>
-                    <input type="text" id="source" class="form-control" value="1" placeholder="1 or 2 or videos/palace.mp4">
-                    <div class="quick-sources">
-                        <span style="font-size: 11px; color: var(--text-muted); align-self: center;">Quick pick:</span>
-                        <button type="button" onclick="setSource('1')">Camera 1</button>
-                        <button type="button" onclick="setSource('2')">Camera 2</button>
-                        <button type="button" onclick="setSource('0')">Camera 0</button>
-                        <button type="button" onclick="setSource('videos/palace.mp4')">Sample Video</button>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="device">Hardware Accelerator</label>
-                    <select id="device" class="form-control" style="font-weight: 600;">
-                        <option value="gpu" selected>⚡ GPU (NVIDIA CUDA - High Speed)</option>
-                        <option value="cpu">💻 CPU Only</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="controls-grid four-col" style="margin-bottom: 12px;">
-                <div class="form-check">
-                    <input type="checkbox" id="fp16" checked>
-                    <label for="fp16">FP16 Fast Mode</label>
-                </div>
-                <div class="form-check">
-                    <input type="checkbox" id="enable_motion_alert" checked>
-                    <label for="enable_motion_alert">Motion Alert</label>
-                </div>
-                <div class="form-check">
-                    <input type="checkbox" id="enable_frs" checked>
-                    <label for="enable_frs">Enable FRS</label>
-                </div>
-                <div class="form-check">
-                    <input type="checkbox" id="enable_anpr">
-                    <label for="enable_anpr">Enable ANPR</label>
-                </div>
-            </div>
-
-            <div class="controls-grid">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="detect_skip">Frame Skip (1 = infer every frame)</label>
-                    <input type="number" id="detect_skip" class="form-control" value="1" min="1" max="10">
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="detector_mode">Tracking Routing Mode</label>
-                    <select id="detector_mode" class="form-control">
-                        <option value="single_class_test" selected>Test Mode (All tracks evaluated)</option>
-                        <option value="multi_class_production">Production Mode (Segregate Human / Vehicle)</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="advanced-toggle" style="margin-top: 12px;" onclick="document.getElementById('advanced-fields').classList.toggle('show')">
-                ▶ Advanced Model Configurations
-            </div>
-            <div class="advanced-fields" id="advanced-fields">
-                <div class="controls-grid">
-                    <div class="form-group">
-                        <label for="exp_file">Exp File</label>
-                        <input type="text" id="exp_file" class="form-control" value="exps/example/mot/yolox_x_mix_det.py">
-                    </div>
-                    <div class="form-group">
-                        <label for="ckpt_file">Checkpoint</label>
-                        <input type="text" id="ckpt_file" class="form-control" value="pretrained/bytetrack_x_mot17.pth.tar">
-                    </div>
-                </div>
-            </div>
-
-            <div class="control-actions">
-                <button class="btn btn-success" id="btn-start" onclick="startStream()">▶ Start Stream</button>
-                <button class="btn btn-danger" id="btn-stop" onclick="stopStream()" disabled>■ Stop Stream</button>
-                <button class="btn btn-primary" id="btn-quick-enroll" onclick="openEnrollModal()">📸 Enroll Face from Live Stream</button>
-                <div class="spacer"></div>
-                <span class="status-pill stopped" id="status-pill">
-                    <span class="dot"></span>
-                    <span id="status-text">STOPPED</span>
-                </span>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══════ Right: Live Stats Sidebar ═══════ -->
-    <div class="card" id="stats-sidebar" style="position: sticky; top: 76px;">
-        <div class="sidebar-section">
-            <div class="section-title">Live Status</div>
-            <div class="sidebar-stat">
-                <span class="label">Status</span>
-                <span class="status-pill stopped" id="side-status">
-                    <span class="dot"></span>
-                    <span id="side-status-text">STOPPED</span>
-                </span>
-            </div>
-            <div class="sidebar-stat">
-                <span class="label">Device</span>
-                <span class="value" id="side-device" style="color: var(--primary);">—</span>
-            </div>
-            <div class="sidebar-stat">
-                <span class="label">FPS</span>
-                <span class="value" id="side-fps">—</span>
-            </div>
-            <div class="sidebar-stat">
-                <span class="label">Frame</span>
-                <span class="value" id="side-frame">—</span>
-            </div>
-            <div class="sidebar-stat">
-                <span class="label">Source</span>
-                <span class="value" id="side-source" style="max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">—</span>
-            </div>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="section-title">Tracking</div>
-            <div class="sidebar-stat">
-                <span class="label">Active Tracks</span>
-                <span class="value" id="side-tracks">0</span>
-            </div>
-            <div class="sidebar-stat">
-                <span class="label">Humans</span>
-                <span class="value" id="side-humans">0</span>
-            </div>
-            <div class="sidebar-stat">
-                <span class="label">Vehicles</span>
-                <span class="value" id="side-vehicles">0</span>
-            </div>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="section-title">Motion Alert</div>
-            <div id="alert-pill-container">
-                <span class="alert-pill" id="side-alert" style="background: #f0fdf4; color: #16a34a;">NORMAL</span>
-            </div>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="section-title">Last Face Match</div>
-            <div id="frs-match-card" class="match-card" style="display:none;">
-                <div class="match-name" id="frs-name">—</div>
-                <div class="match-detail">ID: <span id="frs-id">—</span></div>
-                <div class="match-detail">Conf: <span id="frs-conf">—</span> <span class="badge" id="frs-cat-badge">—</span></div>
-                <div class="match-detail" id="frs-time">—</div>
-            </div>
-            <div id="frs-match-empty" style="color: var(--text-muted); font-size: 13px;">No matches yet</div>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="section-title">Last Plate Match</div>
-            <div id="anpr-match-card" class="match-card" style="display:none;">
-                <div class="match-name" id="anpr-plate">—</div>
-                <div class="match-detail"><span class="badge" id="anpr-cat-badge">—</span></div>
-                <div class="match-detail">Conf: <span id="anpr-conf">—</span></div>
-                <div class="match-detail" id="anpr-time">—</div>
-            </div>
-            <div id="anpr-match-empty" style="color: var(--text-muted); font-size: 13px;">No matches yet</div>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="section-title">Session Alerts</div>
-            <div class="sidebar-stat">
-                <span class="label">Face Alerts</span>
-                <span class="value" id="side-frs-alerts">0</span>
-            </div>
-            <div class="sidebar-stat">
-                <span class="label">Plate Alerts</span>
-                <span class="value" id="side-anpr-alerts">0</span>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ═══════ Live Stream Face Enrollment Modal ═══════ -->
-<div id="enroll-modal" class="modal-backdrop">
-    <div class="modal-dialog">
-        <button type="button" class="modal-close" onclick="closeEnrollModal()">&times;</button>
-        <h3 style="font-size: 18px; margin-bottom: 6px;">Enroll Face from Live Stream</h3>
-        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-            Extracts biometric ArcFace embedding from the current live camera frame
+<!-- ═══════════════════════════════════════════════
+     Page Header & Cluster Status
+     ═══════════════════════════════════════════════ -->
+<div class="cluster-header">
+    <div>
+        <h1 style="font-size: 24px; font-weight: 800; color: var(--text); letter-spacing: -0.5px;">
+            Multi-Camera Surveillance Cluster
+        </h1>
+        <p style="color: var(--text-muted); font-size: 14px; margin-top: 2px;">
+            Enterprise zero-lag concurrent ingestion for DroidCam smartphones, RTSP CCTV, webcams & perimeter feeds
         </p>
+    </div>
 
-        <form id="stream-enroll-form">
-            <div class="form-group">
-                <label for="modal-person-id">Person ID *</label>
-                <input type="text" id="modal-person-id" class="form-control" required placeholder="e.g. SUSPECT_009 or STAFF_42">
+    <div class="cluster-metrics-bar">
+        <div class="metric-pill">
+            <span class="status-dot live" id="cluster-status-dot"></span>
+            <div>
+                <div class="metric-val" id="metric-active-cams">0 / 4</div>
+                <div class="metric-lbl">Active Feeds</div>
             </div>
-
-            <div class="form-group">
-                <label for="modal-name">Full Name *</label>
-                <input type="text" id="modal-name" class="form-control" required placeholder="e.g. Jane Doe">
+        </div>
+        <div class="metric-pill">
+            <span style="font-size: 18px;">🎯</span>
+            <div>
+                <div class="metric-val" id="metric-total-tracks">0</div>
+                <div class="metric-lbl">Total Tracks</div>
             </div>
-
-            <div class="form-group">
-                <label for="modal-category">Category</label>
-                <select id="modal-category" class="form-control">
-                    <option value="WANTED">WANTED (Red Alert Hotlist)</option>
-                    <option value="SUSPECT">SUSPECT (Orange Watchlist)</option>
-                    <option value="VIP">VIP (Green Priority)</option>
-                    <option value="STAFF" selected>STAFF (Blue Authorized)</option>
-                    <option value="UNKNOWN_REPEAT">UNKNOWN_REPEAT (Track Record)</option>
-                </select>
+        </div>
+        <div class="metric-pill">
+            <span style="font-size: 18px;">👤</span>
+            <div>
+                <div class="metric-val" id="metric-humans">0</div>
+                <div class="metric-lbl">Humans</div>
             </div>
-
-            <div class="form-group">
-                <label for="modal-notes">Notes</label>
-                <input type="text" id="modal-notes" class="form-control" placeholder="Optional remarks...">
+        </div>
+        <div class="metric-pill">
+            <span style="font-size: 18px;">🚗</span>
+            <div>
+                <div class="metric-val" id="metric-vehicles">0</div>
+                <div class="metric-lbl">Vehicles</div>
             </div>
-
-            <div id="modal-error" style="display:none; color: var(--danger); font-size: 13px; margin-bottom: 12px; padding: 8px; background: #fef2f2; border-radius: 4px;"></div>
-
-            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px;">
-                <button type="button" class="btn btn-outline" onclick="closeEnrollModal()">Cancel</button>
-                <button type="submit" class="btn btn-success" id="modal-submit-btn">✓ Enroll Active Face</button>
-            </div>
-        </form>
+        </div>
     </div>
 </div>
-{% endblock %}
 
-{% block extra_js %}
+<!-- ═══════════════════════════════════════════════
+     Cluster Control Toolbar
+     ═══════════════════════════════════════════════ -->
+<div class="cluster-toolbar">
+    <div class="toolbar-left">
+        <div class="btn-group">
+            <button type="button" id="btn-view-grid" class="active" onclick="setViewMode('grid')">
+                ⊞ 2x2 Grid View
+            </button>
+            <button type="button" id="btn-view-focus" onclick="setViewMode('focus')">
+                🔲 1x1 Focus View
+            </button>
+        </div>
+
+        <button type="button" class="btn btn-primary" onclick="startAllStreams()" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span>▶</span> Start All Feeds
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="stopAllStreams()" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span>⏹</span> Stop All
+        </button>
+    </div>
+
+    <div class="toolbar-right">
+        <button type="button" class="btn btn-secondary" onclick="openAddCameraModal()" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span>➕</span> Add Camera
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="toggleSettingsDrawer()" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span>⚙</span> AI & Hardware Config
+        </button>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     Hardware Accelerator & Tracking Config Drawer
+     ═══════════════════════════════════════════════ -->
+<div class="settings-drawer" id="settings-drawer">
+    <div style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; justify-content: space-between;">
+        <span>Cluster Hardware Acceleration & Analytics Configuration</span>
+        <span style="color: var(--text-muted); cursor: pointer;" onclick="toggleSettingsDrawer()">✕</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 12px;">
+        <div class="form-group" style="margin-bottom:0;">
+            <label for="cluster-device">Hardware Accelerator</label>
+            <select id="cluster-device" class="form-control" style="font-weight: 600;">
+                <option value="gpu" selected>⚡ GPU (NVIDIA CUDA - High Throughput)</option>
+                <option value="cpu">💻 CPU Mode</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+            <label for="cluster-detect-skip">Frame Skip (2 = 2x FPS Boost)</label>
+            <input type="number" id="cluster-detect-skip" class="form-control" value="2" min="1" max="5">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+            <label for="cluster-detector-mode">Routing Mode</label>
+            <select id="cluster-detector-mode" class="form-control">
+                <option value="single_class_test" selected>Human Priority (single_class_test)</option>
+                <option value="multi_class_separate">Separate Human & Vehicle Classifiers</option>
+                <option value="all_classes">All Classes (MOT17)</option>
+            </select>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px;">
+        <label class="form-check" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="cluster-fp16" checked>
+            <span>FP16 Half-Precision</span>
+        </label>
+        <label class="form-check" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="cluster-motion-alert" checked>
+            <span>Motion Anomaly Alerts</span>
+        </label>
+        <label class="form-check" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="cluster-enable-frs">
+            <span>Facial Recognition (FRS)</span>
+        </label>
+        <label class="form-check" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="cluster-enable-anpr">
+            <span>License Plate Recognition (ANPR)</span>
+        </label>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     VIEW 1: 2x2 Interactive Grid Video Wall
+     ═══════════════════════════════════════════════ -->
+<div class="grid-view-container" id="grid-view-container">
+    <!-- Camera tiles will be dynamically rendered or populated here -->
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     VIEW 2: 1x1 Focused Inspection View
+     ═══════════════════════════════════════════════ -->
+<div class="focus-view-container" id="focus-view-container">
+    <div class="focus-main">
+        <div class="focus-video-box">
+            <div class="cam-viewport" style="aspect-ratio: 16 / 9; max-height: 540px;">
+                <img id="focus-stream-img" src="" alt="Focused Camera Stream">
+                <div class="hud-top-right">
+                    <span class="hud-badge" id="focus-hud-alert" style="background:#22c55e;">MOTION: NORMAL</span>
+                </div>
+                <div class="hud-bottom-left">
+                    <span class="hud-badge" id="focus-hud-cam-name">CAM 01: Checkpost Alpha</span>
+                    <span class="hud-badge" id="focus-hud-fps">FPS: --</span>
+                </div>
+                <div class="hud-bottom-right">
+                    <span class="hud-badge" id="focus-hud-counts">👤 0 | 🚗 0 | Tracks: 0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="focus-camera-switcher" id="focus-camera-switcher">
+            <!-- Camera selection pills -->
+        </div>
+    </div>
+
+    <!-- Sidebar for Focused Camera -->
+    <div class="card" style="margin: 0; padding: 18px;">
+        <div class="card-header" style="padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <span id="focus-sidebar-title">Camera Details</span>
+            <button class="btn btn-sm btn-secondary" onclick="setViewMode('grid')">Back to 2x2</button>
+        </div>
+
+        <div style="font-size: 13px; line-height: 1.8;">
+            <div style="display:flex; justify-content:space-between;">
+                <span style="color:var(--text-muted)">Location:</span>
+                <span style="font-weight:600" id="focus-sidebar-location">--</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+                <span style="color:var(--text-muted)">Status:</span>
+                <span style="font-weight:600" id="focus-sidebar-status">OFFLINE</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+                <span style="color:var(--text-muted)">Source:</span>
+                <span style="font-family:monospace; color:var(--primary); font-size:12px;" id="focus-sidebar-source">--</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+                <span style="color:var(--text-muted)">Active Tracks:</span>
+                <span style="font-weight:700" id="focus-sidebar-tracks">0</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+                <span style="color:var(--text-muted)">Pedestrians:</span>
+                <span style="font-weight:700; color:#3b82f6;" id="focus-sidebar-humans">0</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+                <span style="color:var(--text-muted)">Vehicles:</span>
+                <span style="font-weight:700; color:#10b981;" id="focus-sidebar-vehicles">0</span>
+            </div>
+        </div>
+
+        <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);">
+            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
+                Latest Intelligence Matches
+            </div>
+            <div id="focus-intel-matches">
+                <div style="color: var(--text-muted); font-size: 13px; font-style: italic;">
+                    No facial or plate matches recorded on this camera.
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; gap: 8px;">
+            <button class="btn btn-primary btn-sm" style="flex:1;" id="focus-btn-toggle" onclick="toggleCurrentFocusedStream()">
+                ▶ Start Stream
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="editCurrentFocusedCamera()">
+                ⚙ Edit
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     Camera Configuration & Add/Edit Modal
+     ═══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="camera-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3 id="modal-camera-title">Configure Camera Feed</h3>
+            <button type="button" style="background:none; border:none; font-size:18px; cursor:pointer; color:var(--text-muted);" onclick="closeCameraModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form id="camera-form" onsubmit="handleCameraFormSubmit(event)">
+                <input type="hidden" id="form-cam-id" value="-1">
+
+                <div class="form-group">
+                    <label for="form-cam-name">Camera Name</label>
+                    <input type="text" id="form-cam-name" class="form-control" placeholder="e.g. CAM 01: Checkpost Alpha" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="form-cam-location">Location / Sector</label>
+                    <input type="text" id="form-cam-location" class="form-control" placeholder="e.g. Sector 3 Perimeter Gate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="form-cam-url">Stream URL / Hardware Source</label>
+                    <input type="text" id="form-cam-url" class="form-control" placeholder="http://192.168.137.15:4747/video or 0" required>
+                    <div style="margin-top: 6px;">
+                        <span style="font-size: 11px; color: var(--text-muted);">Quick Presets:</span>
+                        <div class="preset-chips">
+                            <span class="preset-chip" onclick="applyPreset('droidcam')">📱 DroidCam Phone</span>
+                            <span class="preset-chip" onclick="applyPreset('rtsp')">📹 RTSP IP Cam</span>
+                            <span class="preset-chip" onclick="applyPreset('webcam0')">💻 USB Cam 0</span>
+                            <span class="preset-chip" onclick="applyPreset('webcam1')">💻 USB Cam 1</span>
+                            <span class="preset-chip" onclick="applyPreset('video')">🎬 Border Video File</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-check" style="display:flex; align-items:center; gap:8px; margin-top:12px;">
+                    <input type="checkbox" id="form-cam-enabled" checked>
+                    <label for="form-cam-enabled" style="margin-bottom:0; cursor:pointer;">Enable this camera in surveillance cluster</label>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-danger btn-sm" id="btn-delete-camera" style="display:none;" onclick="handleDeleteCamera()">
+                Delete Camera
+            </button>
+            <div style="display:flex; gap:8px; margin-left:auto;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="closeCameraModal()">Cancel</button>
+                <button type="submit" form="camera-form" class="btn btn-primary btn-sm">Save Camera</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-    let _prevFrsAlerts = 0;
-    let _prevAnprAlerts = 0;
+    // ═══════════════════════════════════════════════
+    // State & Initialization
+    // ═══════════════════════════════════════════════
+    let camerasData = [];
+    let currentViewMode = 'grid'; // 'grid' or 'focus'
+    let focusedCameraId = 0;
+    let pollInterval = null;
 
-    function setSource(src) {
-        document.getElementById('source').value = src;
+    document.addEventListener('DOMContentLoaded', () => {
+        loadCameras();
+        startStatsPolling();
+    });
+
+    // ═══════════════════════════════════════════════
+    // API Calls
+    // ═══════════════════════════════════════════════
+    async function loadCameras() {
+        try {
+            const res = await fetch('/api/cameras');
+            const data = await res.json();
+            camerasData = data.cameras || [];
+            updateClusterMetrics(data);
+            renderGridView();
+            renderFocusSwitcher();
+        } catch (err) {
+            console.error('Failed to load cameras:', err);
+        }
     }
 
-    function openEnrollModal() {
-        document.getElementById('modal-error').style.display = 'none';
-        document.getElementById('enroll-modal').classList.add('show');
+    function startStatsPolling() {
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch('/api/cameras/stats_all');
+                if (!res.ok) return;
+                const data = await res.json();
+                camerasData = data.cameras || [];
+                updateClusterMetrics(data);
+                updateTileBadges();
+                if (currentViewMode === 'focus') {
+                    updateFocusViewDetails();
+                }
+            } catch (e) {
+                // Polling error ignored
+            }
+        }, 1000);
     }
 
-    function closeEnrollModal() {
-        document.getElementById('enroll-modal').classList.remove('show');
+    function getClusterPipelineConfig() {
+        return {
+            device: document.getElementById('cluster-device').value,
+            fp16: document.getElementById('cluster-fp16').checked,
+            detect_skip: parseInt(document.getElementById('cluster-detect-skip').value) || 1,
+            detector_mode: document.getElementById('cluster-detector-mode').value,
+            enable_motion_alert: document.getElementById('cluster-motion-alert').checked,
+            enable_frs: document.getElementById('cluster-enable-frs').checked,
+            enable_anpr: document.getElementById('cluster-enable-anpr').checked,
+        };
     }
 
-    document.getElementById('stream-enroll-form').addEventListener('submit', async function(e) {
+    async function startAllStreams() {
+        const cfg = getClusterPipelineConfig();
+        camerasData.forEach(c => {
+            if (c.enabled !== false) {
+                c.is_running = true;
+                c.status = 'CONNECTING';
+                const btn = document.getElementById(`btn-toggle-${c.cam_id}`);
+                const dot = document.getElementById(`dot-cam-${c.cam_id}`);
+                if (btn) { btn.innerHTML = '⏹'; btn.title = 'Stop Feed'; }
+                if (dot) { dot.className = 'status-dot connecting'; }
+            }
+        });
+        try {
+            await fetch('/api/cameras/start_all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cfg),
+            });
+            setTimeout(() => {
+                camerasData.forEach(c => {
+                    const img = document.getElementById(`img-cam-${c.cam_id}`);
+                    const placeholder = document.getElementById(`placeholder-cam-${c.cam_id}`);
+                    if (img && c.is_running) {
+                        img.src = `/stream/video/${c.cam_id}?t=${Date.now()}`;
+                        img.style.display = 'block';
+                    }
+                    if (placeholder && c.is_running) {
+                        placeholder.classList.add('hidden');
+                    }
+                });
+            }, 600);
+        } catch (e) {
+            alert('Error starting all streams: ' + e);
+        }
+    }
+
+    async function stopAllStreams() {
+        camerasData.forEach(c => {
+            c.is_running = false;
+            c.status = 'OFFLINE';
+            const btn = document.getElementById(`btn-toggle-${c.cam_id}`);
+            const img = document.getElementById(`img-cam-${c.cam_id}`);
+            const placeholder = document.getElementById(`placeholder-cam-${c.cam_id}`);
+            const dot = document.getElementById(`dot-cam-${c.cam_id}`);
+            if (btn) { btn.innerHTML = '▶'; btn.title = 'Start Feed'; }
+            if (dot) { dot.className = 'status-dot'; }
+            if (img) { img.style.display = 'none'; img.src = ''; }
+            if (placeholder) { placeholder.classList.remove('hidden'); }
+        });
+        try {
+            await fetch('/api/cameras/stop_all', { method: 'POST' });
+        } catch (e) {
+            alert('Error stopping all streams: ' + e);
+        }
+    }
+
+    async function toggleSingleStream(camId) {
+        const cam = camerasData.find(c => c.cam_id === camId);
+        if (!cam) return;
+
+        const btnToggle = document.getElementById(`btn-toggle-${camId}`);
+        const img = document.getElementById(`img-cam-${camId}`);
+        const placeholder = document.getElementById(`placeholder-cam-${camId}`);
+        const dot = document.getElementById(`dot-cam-${camId}`);
+
+        if (cam.is_running) {
+            // Optimistic STOP
+            cam.is_running = false;
+            cam.status = 'OFFLINE';
+            if (btnToggle) { btnToggle.innerHTML = '▶'; btnToggle.title = 'Start Feed'; }
+            if (dot) { dot.className = 'status-dot'; }
+            if (img) { img.style.display = 'none'; img.src = ''; }
+            if (placeholder) { placeholder.classList.remove('hidden'); }
+
+            try {
+                await fetch(`/api/cameras/${camId}/stop`, { method: 'POST' });
+            } catch (e) {
+                console.error('Stop error:', e);
+            }
+        } else {
+            // Optimistic START
+            cam.is_running = true;
+            cam.status = 'CONNECTING';
+            if (btnToggle) { btnToggle.innerHTML = '⏹'; btnToggle.title = 'Stop Feed'; }
+            if (dot) { dot.className = 'status-dot connecting'; }
+
+            const cfg = getClusterPipelineConfig();
+            try {
+                await fetch(`/api/cameras/${camId}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cfg),
+                });
+                if (img) {
+                    img.src = `/stream/video/${camId}?t=${Date.now()}`;
+                    img.style.display = 'block';
+                }
+                if (placeholder) { placeholder.classList.add('hidden'); }
+            } catch (e) {
+                console.error('Start error:', e);
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════
+    // Rendering: 2x2 Grid View
+    // ═══════════════════════════════════════════════
+    function renderGridView() {
+        const container = document.getElementById('grid-view-container');
+        if (!container) return;
+
+        container.innerHTML = camerasData.map(cam => {
+            const isLive = cam.is_running && cam.status === 'LIVE';
+            const isConnecting = cam.is_running && cam.status === 'CONNECTING';
+            const statusClass = isLive ? 'live' : (isConnecting ? 'connecting' : (cam.status === 'ERROR' ? 'error' : ''));
+            const alertClass = cam.motion_alert_level === 'HIGH' ? 'alert-high' : (cam.motion_alert_level === 'MEDIUM' ? 'alert-medium' : (cam.motion_alert_level === 'LOW' ? 'alert-low' : ''));
+
+            return `
+                <div class="cam-tile ${alertClass}" id="tile-cam-${cam.cam_id}">
+                    <div class="cam-tile-header">
+                        <div class="cam-info-wrap">
+                            <span class="status-dot ${statusClass}" id="dot-cam-${cam.cam_id}"></span>
+                            <span class="cam-title">${cam.name}</span>
+                            <span class="cam-loc">• ${cam.location}</span>
+                        </div>
+                        <div class="cam-tile-actions">
+                            <button type="button" class="icon-btn" title="Focus View" onclick="focusCamera(${cam.cam_id})">
+                                🔍
+                            </button>
+                            <button type="button" class="icon-btn" id="btn-toggle-${cam.cam_id}" title="${cam.is_running ? 'Stop Feed' : 'Start Feed'}" onclick="toggleSingleStream(${cam.cam_id})">
+                                ${cam.is_running ? '⏹' : '▶'}
+                            </button>
+                            <button type="button" class="icon-btn" title="Settings" onclick="openEditCameraModal(${cam.cam_id})">
+                                ⚙
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="cam-viewport" onclick="focusCamera(${cam.cam_id})" style="cursor: pointer;">
+                        <img id="img-cam-${cam.cam_id}" 
+                             class="cam-stream-img" 
+                             src="${cam.is_running ? `/stream/video/${cam.cam_id}?t=${Date.now()}` : ''}" 
+                             style="${cam.is_running ? '' : 'display:none;'}"
+                             alt="${cam.name}">
+                        
+                        <div id="placeholder-cam-${cam.cam_id}" class="cam-placeholder ${cam.is_running ? 'hidden' : ''}">
+                            <span class="icon">📹</span>
+                            <span style="font-weight:600; color:#cbd5e1;">${cam.name} (${cam.status})</span>
+                            <span style="font-size:11px;">Click ▶ to launch ingestion</span>
+                        </div>
+
+                        <!-- Top-Right HUD Badge -->
+                        <div class="hud-top-right">
+                            <span class="hud-badge" id="hud-alert-${cam.cam_id}" style="background:${cam.motion_alert_color};">
+                                ${cam.motion_alert_level !== 'NORMAL' ? `ALERT: ${cam.motion_alert_level}` : 'NORMAL'}
+                            </span>
+                        </div>
+
+                        <!-- Bottom-Left HUD Badge -->
+                        <div class="hud-bottom-left">
+                            <span class="hud-badge" id="hud-fps-${cam.cam_id}">FPS: ${cam.fps || '--'}</span>
+                            <span class="hud-badge">${cam.device || 'GPU'}</span>
+                        </div>
+
+                        <!-- Bottom-Right HUD Badge -->
+                        <div class="hud-bottom-right">
+                            <span class="hud-badge" id="hud-counts-${cam.cam_id}">
+                                👤 ${cam.human_count || 0} | 🚗 ${cam.vehicle_count || 0} | Tracks: ${cam.active_tracks || 0}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="cam-tile-footer">
+                        <div class="source-tag" title="${cam.configured_url}">
+                            📡 ${cam.configured_url}
+                        </div>
+                        <div id="intel-tag-${cam.cam_id}">
+                            ${cam.last_frs_match ? `<span style="color:#ef4444; font-weight:700;">🚨 ${cam.last_frs_match.name}</span>` : (cam.last_anpr_match ? `<span style="color:#f59e0b; font-weight:700;">🚗 ${cam.last_anpr_match.plate}</span>` : '<span>Clear</span>')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function updateTileBadges() {
+        camerasData.forEach(cam => {
+            const cid = cam.cam_id;
+            const tile = document.getElementById(`tile-cam-${cid}`);
+            const dot = document.getElementById(`dot-cam-${cid}`);
+            const img = document.getElementById(`img-cam-${cid}`);
+            const placeholder = document.getElementById(`placeholder-cam-${cid}`);
+            const btnToggle = document.getElementById(`btn-toggle-${cid}`);
+            const hudFps = document.getElementById(`hud-fps-${cid}`);
+            const hudCounts = document.getElementById(`hud-counts-${cid}`);
+            const hudAlert = document.getElementById(`hud-alert-${cid}`);
+            const intelTag = document.getElementById(`intel-tag-${cid}`);
+
+            if (btnToggle) {
+                btnToggle.innerHTML = cam.is_running ? '⏹' : '▶';
+                btnToggle.title = cam.is_running ? 'Stop Feed' : 'Start Feed';
+            }
+
+            if (tile) {
+                tile.className = `cam-tile ${cam.motion_alert_level === 'HIGH' ? 'alert-high' : (cam.motion_alert_level === 'MEDIUM' ? 'alert-medium' : (cam.motion_alert_level === 'LOW' ? 'alert-low' : ''))}`;
+            }
+
+            if (dot) {
+                const isLive = cam.is_running && cam.status === 'LIVE';
+                const isConnecting = cam.is_running && cam.status === 'CONNECTING';
+                dot.className = `status-dot ${isLive ? 'live' : (isConnecting ? 'connecting' : (cam.status === 'ERROR' ? 'error' : ''))}`;
+            }
+
+            if (img && placeholder) {
+                if (cam.is_running) {
+                    if (img.style.display === 'none' || !img.src.includes(`/stream/video/${cid}`)) {
+                        img.src = `/stream/video/${cid}?t=${Date.now()}`;
+                        img.style.display = 'block';
+                    }
+                    placeholder.classList.add('hidden');
+                } else {
+                    img.style.display = 'none';
+                    img.src = '';
+                    placeholder.classList.remove('hidden');
+                }
+            }
+
+            if (hudFps) hudFps.textContent = `FPS: ${cam.fps || '--'}`;
+            if (hudCounts) hudCounts.textContent = `👤 ${cam.human_count || 0} | 🚗 ${cam.vehicle_count || 0} | Tracks: ${cam.active_tracks || 0}`;
+            if (hudAlert) {
+                hudAlert.textContent = cam.motion_alert_level !== 'NORMAL' ? `ALERT: ${cam.motion_alert_level}` : 'NORMAL';
+                hudAlert.style.background = cam.motion_alert_color;
+            }
+
+            if (intelTag) {
+                if (cam.last_frs_match) {
+                    intelTag.innerHTML = `<span style="color:#ef4444; font-weight:700;">🚨 ${cam.last_frs_match.name}</span>`;
+                } else if (cam.last_anpr_match) {
+                    intelTag.innerHTML = `<span style="color:#f59e0b; font-weight:700;">🚗 ${cam.last_anpr_match.plate}</span>`;
+                } else {
+                    intelTag.innerHTML = `<span>Clear</span>`;
+                }
+            }
+        });
+    }
+
+    function updateClusterMetrics(data) {
+        const metrics = data.cluster_metrics || {};
+        const activeCams = data.running_cameras || 0;
+        const totalCams = data.total_cameras || camerasData.length;
+
+        document.getElementById('metric-active-cams').textContent = `${activeCams} / ${totalCams}`;
+        document.getElementById('metric-total-tracks').textContent = metrics.active_tracks || 0;
+        document.getElementById('metric-humans').textContent = metrics.human_count || 0;
+        document.getElementById('metric-vehicles').textContent = metrics.vehicle_count || 0;
+
+        const clusterDot = document.getElementById('cluster-status-dot');
+        if (clusterDot) {
+            clusterDot.className = `status-dot ${activeCams > 0 ? 'live' : ''}`;
+        }
+    }
+
+    // ═══════════════════════════════════════════════
+    // Rendering: 1x1 Focus View
+    // ═══════════════════════════════════════════════
+    function setViewMode(mode) {
+        currentViewMode = mode;
+        const gridBox = document.getElementById('grid-view-container');
+        const focusBox = document.getElementById('focus-view-container');
+        const btnGrid = document.getElementById('btn-view-grid');
+        const btnFocus = document.getElementById('btn-view-focus');
+
+        if (mode === 'grid') {
+            gridBox.style.display = 'grid';
+            focusBox.style.display = 'none';
+            btnGrid.classList.add('active');
+            btnFocus.classList.remove('active');
+            const focusImg = document.getElementById('focus-stream-img');
+            if (focusImg) focusImg.src = '';
+        } else {
+            gridBox.style.display = 'none';
+            focusBox.style.display = 'grid';
+            btnGrid.classList.remove('active');
+            btnFocus.classList.add('active');
+            updateFocusViewDetails();
+        }
+    }
+
+    function focusCamera(camId) {
+        focusedCameraId = camId;
+        setViewMode('focus');
+        renderFocusSwitcher();
+        updateFocusViewDetails();
+    }
+
+    function renderFocusSwitcher() {
+        const switcher = document.getElementById('focus-camera-switcher');
+        if (!switcher) return;
+
+        switcher.innerHTML = camerasData.map(c => `
+            <div class="switcher-pill ${c.cam_id === focusedCameraId ? 'active' : ''}" onclick="selectFocusedCamera(${c.cam_id})">
+                <span class="status-dot ${c.is_running ? 'live' : ''}"></span>
+                <span>${c.name}</span>
+            </div>
+        `).join('');
+    }
+
+    function selectFocusedCamera(camId) {
+        focusedCameraId = camId;
+        renderFocusSwitcher();
+        updateFocusViewDetails();
+    }
+
+    function updateFocusViewDetails() {
+        const cam = camerasData.find(c => c.cam_id === focusedCameraId) || camerasData[0];
+        if (!cam) return;
+
+        const focusImg = document.getElementById('focus-stream-img');
+        if (focusImg) {
+            const targetSrc = `/stream/video/${cam.cam_id}?t=${Date.now()}`;
+            if (cam.is_running) {
+                if (!focusImg.src.includes(`/stream/video/${cam.cam_id}`)) {
+                    focusImg.src = targetSrc;
+                }
+            } else {
+                focusImg.src = '';
+            }
+        }
+
+        document.getElementById('focus-hud-cam-name').textContent = cam.name;
+        document.getElementById('focus-hud-fps').textContent = `FPS: ${cam.fps || '--'}`;
+        document.getElementById('focus-hud-counts').textContent = `👤 ${cam.human_count || 0} | 🚗 ${cam.vehicle_count || 0} | Tracks: ${cam.active_tracks || 0}`;
+        const hudAlert = document.getElementById('focus-hud-alert');
+        if (hudAlert) {
+            hudAlert.textContent = `MOTION: ${cam.motion_alert_level}`;
+            hudAlert.style.background = cam.motion_alert_color;
+        }
+
+        document.getElementById('focus-sidebar-title').textContent = cam.name;
+        document.getElementById('focus-sidebar-location').textContent = cam.location;
+        document.getElementById('focus-sidebar-status').textContent = cam.is_running ? 'LIVE' : 'OFFLINE';
+        document.getElementById('focus-sidebar-status').style.color = cam.is_running ? '#22c55e' : '#94a3b8';
+        document.getElementById('focus-sidebar-source').textContent = cam.configured_url;
+        document.getElementById('focus-sidebar-tracks').textContent = cam.active_tracks || 0;
+        document.getElementById('focus-sidebar-humans').textContent = cam.human_count || 0;
+        document.getElementById('focus-sidebar-vehicles').textContent = cam.vehicle_count || 0;
+
+        const toggleBtn = document.getElementById('focus-btn-toggle');
+        if (toggleBtn) {
+            toggleBtn.textContent = cam.is_running ? '⏹ Stop Stream' : '▶ Start Stream';
+            toggleBtn.className = cam.is_running ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';
+        }
+
+        const intelBox = document.getElementById('focus-intel-matches');
+        if (intelBox) {
+            let html = '';
+            if (cam.last_frs_match) {
+                html += `
+                    <div style="background:#fef2f2; border:1px solid #fecaca; padding:8px 10px; border-radius:6px; margin-bottom:6px;">
+                        <div style="font-weight:700; color:#dc2626;">🚨 FRS MATCH: ${cam.last_frs_match.name}</div>
+                        <div style="font-size:11px; color:#64748b;">Confidence: ${cam.last_frs_match.confidence} | Category: ${cam.last_frs_match.category}</div>
+                    </div>
+                `;
+            }
+            if (cam.last_anpr_match) {
+                html += `
+                    <div style="background:#fffbeb; border:1px solid #fde68a; padding:8px 10px; border-radius:6px;">
+                        <div style="font-weight:700; color:#d97706;">🚗 ANPR WATCHLIST: ${cam.last_anpr_match.plate}</div>
+                        <div style="font-size:11px; color:#64748b;">Confidence: ${cam.last_anpr_match.confidence} | Type: ${cam.last_anpr_match.category}</div>
+                    </div>
+                `;
+            }
+            if (!html) {
+                html = '<div style="color:var(--text-muted); font-size:13px; font-style:italic;">No intelligence alerts recorded.</div>';
+            }
+            intelBox.innerHTML = html;
+        }
+    }
+
+    function toggleCurrentFocusedStream() {
+        toggleSingleStream(focusedCameraId);
+    }
+
+    function editCurrentFocusedCamera() {
+        openEditCameraModal(focusedCameraId);
+    }
+
+    // ═══════════════════════════════════════════════
+    // Modal & CRUD Operations
+    // ═══════════════════════════════════════════════
+    function openAddCameraModal() {
+        document.getElementById('modal-camera-title').textContent = 'Add New Surveillance Camera';
+        document.getElementById('form-cam-id').value = '-1';
+        document.getElementById('form-cam-name').value = `CAM ${String(camerasData.length).padStart(2, '0')}`;
+        document.getElementById('form-cam-location').value = '';
+        document.getElementById('form-cam-url').value = 'http://192.168.137.15:4747/video';
+        document.getElementById('form-cam-enabled').checked = true;
+        document.getElementById('btn-delete-camera').style.display = 'none';
+        document.getElementById('camera-modal').classList.add('open');
+    }
+
+    function openEditCameraModal(camId) {
+        const cam = camerasData.find(c => c.cam_id === camId);
+        if (!cam) return;
+
+        document.getElementById('modal-camera-title').textContent = `Edit Camera #${cam.cam_id}`;
+        document.getElementById('form-cam-id').value = cam.cam_id;
+        document.getElementById('form-cam-name').value = cam.name;
+        document.getElementById('form-cam-location').value = cam.location;
+        document.getElementById('form-cam-url').value = cam.configured_url;
+        document.getElementById('form-cam-enabled').checked = cam.enabled !== false;
+        document.getElementById('btn-delete-camera').style.display = 'inline-block';
+        document.getElementById('camera-modal').classList.add('open');
+    }
+
+    function closeCameraModal() {
+        document.getElementById('camera-modal').classList.remove('open');
+    }
+
+    function applyPreset(type) {
+        const urlInput = document.getElementById('form-cam-url');
+        if (type === 'droidcam') {
+            const ip = prompt('Enter your phone DroidCam WiFi IP address:', '192.168.137.15');
+            if (ip) {
+                urlInput.value = `http://${ip.trim()}:4747/video`;
+            }
+        } else if (type === 'rtsp') {
+            urlInput.value = 'rtsp://admin:password@192.168.1.100:554/stream1';
+        } else if (type === 'webcam0') {
+            urlInput.value = '0';
+        } else if (type === 'webcam1') {
+            urlInput.value = '1';
+        } else if (type === 'video') {
+            urlInput.value = 'videos/palace.mp4';
+        }
+    }
+
+    async function handleCameraFormSubmit(e) {
         e.preventDefault();
-        const btn = document.getElementById('modal-submit-btn');
-        const err = document.getElementById('modal-error');
-        err.style.display = 'none';
-        btn.disabled = true;
-        btn.textContent = 'Extracting Face...';
-
+        const rawId = parseInt(document.getElementById('form-cam-id').value);
         const payload = {
-            person_id: document.getElementById('modal-person-id').value.trim(),
-            name: document.getElementById('modal-name').value.trim(),
-            category: document.getElementById('modal-category').value,
-            notes: document.getElementById('modal-notes').value.trim(),
+            id: rawId >= 0 ? rawId : undefined,
+            name: document.getElementById('form-cam-name').value.trim(),
+            location: document.getElementById('form-cam-location').value.trim(),
+            url: document.getElementById('form-cam-url').value.trim(),
+            enabled: document.getElementById('form-cam-enabled').checked,
         };
 
         try {
-            const res = await fetch('/api/frs/enroll-live-stream', {
+            const res = await fetch('/api/cameras', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
-            const data = await res.json();
-
-            if (data.success) {
-                showToast(data.message);
-                closeEnrollModal();
-                document.getElementById('stream-enroll-form').reset();
+            if (res.ok) {
+                closeCameraModal();
+                loadCameras();
             } else {
-                err.textContent = data.message || 'Enrollment failed.';
-                err.style.display = 'block';
+                alert('Failed to save camera');
             }
-        } catch(e) {
-            err.textContent = 'Communication error.';
-            err.style.display = 'block';
-        } finally {
-            btn.disabled = false;
-            btn.textContent = '✓ Enroll Active Face';
+        } catch (err) {
+            alert('Error saving camera: ' + err);
         }
-    });
-
-    function beep() {
-        try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            gain.gain.value = 0.15;
-            osc.frequency.value = 880;
-            osc.start();
-            osc.stop(ctx.currentTime + 0.15);
-        } catch(e) {}
     }
 
-    function startStream() {
-        const errorBanner = document.getElementById('video-error-banner');
-        errorBanner.style.display = 'none';
+    async function handleDeleteCamera() {
+        const rawId = parseInt(document.getElementById('form-cam-id').value);
+        if (rawId < 0) return;
 
-        const config = {
-            source: document.getElementById('source').value.trim(),
-            device: document.getElementById('device').value,
-            fp16: document.getElementById('fp16').checked,
-            enable_frs: document.getElementById('enable_frs').checked,
-            enable_anpr: document.getElementById('enable_anpr').checked,
-            enable_motion_alert: document.getElementById('enable_motion_alert').checked,
-            detect_skip: parseInt(document.getElementById('detect_skip').value) || 1,
-            detector_mode: document.getElementById('detector_mode').value,
-            exp_file: document.getElementById('exp_file').value,
-            ckpt_file: document.getElementById('ckpt_file').value,
-        };
-
-        fetch('/api/stream/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(config),
-        })
-        .then(r => r.json())
-        .then(data => {
-            showToast('Stream starting on ' + config.device.toUpperCase() + '...');
-            document.getElementById('btn-start').disabled = true;
-            document.getElementById('btn-stop').disabled = false;
-
-            // Show video feed
-            const feed = document.getElementById('video-feed');
-            const placeholder = document.getElementById('video-placeholder');
-            feed.src = '/stream/video?' + Date.now();
-            feed.style.display = 'block';
-            placeholder.style.display = 'none';
-        })
-        .catch(e => showToast('Failed to start stream', 'error'));
+        if (confirm(`Are you sure you want to delete camera #${rawId}?`)) {
+            try {
+                await fetch(`/api/cameras/${rawId}`, { method: 'DELETE' });
+                closeCameraModal();
+                loadCameras();
+            } catch (e) {
+                alert('Error deleting camera: ' + e);
+            }
+        }
     }
 
-    function stopStream() {
-        fetch('/api/stream/stop', { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-            showToast('Stream stopped');
-            document.getElementById('btn-start').disabled = false;
-            document.getElementById('btn-stop').disabled = true;
-
-            const feed = document.getElementById('video-feed');
-            const placeholder = document.getElementById('video-placeholder');
-            feed.src = '';
-            feed.style.display = 'none';
-            placeholder.style.display = 'flex';
-        })
-        .catch(e => showToast('Failed to stop stream', 'error'));
+    function toggleSettingsDrawer() {
+        const drawer = document.getElementById('settings-drawer');
+        drawer.classList.toggle('open');
     }
-
-    const ALERT_STYLES = {
-        'NORMAL': { bg: '#f0fdf4', color: '#16a34a' },
-        'LOW':    { bg: '#fefce8', color: '#ca8a04' },
-        'MEDIUM': { bg: '#fff7ed', color: '#ea580c' },
-        'HIGH':   { bg: '#fef2f2', color: '#dc2626' },
-    };
-
-    function updateSidebar() {
-        fetch('/api/live/stats')
-        .then(r => r.json())
-        .then(data => {
-            // Status
-            const running = data.is_running;
-            const sideStatus = document.getElementById('side-status');
-            const sideStatusText = document.getElementById('side-status-text');
-            const statusPill = document.getElementById('status-pill');
-            const statusText = document.getElementById('status-text');
-
-            [sideStatus, statusPill].forEach(el => {
-                el.className = 'status-pill ' + (running ? 'live' : 'stopped');
-            });
-            sideStatusText.textContent = running ? 'LIVE' : 'STOPPED';
-            statusText.textContent = running ? 'LIVE' : 'STOPPED';
-
-            document.getElementById('btn-start').disabled = running;
-            document.getElementById('btn-stop').disabled = !running;
-
-            // Stats
-            document.getElementById('side-device').textContent = data.device || '—';
-            document.getElementById('side-fps').textContent = data.fps || '—';
-            document.getElementById('side-frame').textContent = data.frame_id || '—';
-            document.getElementById('side-source').textContent = data.source || '—';
-            document.getElementById('side-tracks').textContent = data.active_tracks;
-            document.getElementById('side-humans').textContent = data.human_count;
-            document.getElementById('side-vehicles').textContent = data.vehicle_count;
-
-            // Check Error Message
-            const errorBanner = document.getElementById('video-error-banner');
-            if (!running && data.error_message) {
-                errorBanner.textContent = '⚠️ ' + data.error_message;
-                errorBanner.style.display = 'block';
-            } else if (running) {
-                errorBanner.style.display = 'none';
-            }
-
-            // Alert
-            const alertLevel = data.motion_alert_level || 'NORMAL';
-            const alertEl = document.getElementById('side-alert');
-            const style = ALERT_STYLES[alertLevel] || ALERT_STYLES['NORMAL'];
-            alertEl.textContent = alertLevel;
-            alertEl.style.background = style.bg;
-            alertEl.style.color = style.color;
-
-            // FRS Match
-            if (data.last_frs_match) {
-                document.getElementById('frs-match-card').style.display = 'block';
-                document.getElementById('frs-match-empty').style.display = 'none';
-                document.getElementById('frs-name').textContent = data.last_frs_match.name;
-                document.getElementById('frs-id').textContent = data.last_frs_match.person_id;
-                document.getElementById('frs-conf').textContent = (data.last_frs_match.confidence * 100).toFixed(1) + '%';
-                const frsBadge = document.getElementById('frs-cat-badge');
-                frsBadge.textContent = data.last_frs_match.category;
-                frsBadge.className = 'badge ' + categoryBadgeClass(data.last_frs_match.category);
-                document.getElementById('frs-time').textContent = data.last_frs_match.timestamp;
-            }
-
-            // ANPR Match
-            if (data.last_anpr_match) {
-                document.getElementById('anpr-match-card').style.display = 'block';
-                document.getElementById('anpr-match-empty').style.display = 'none';
-                document.getElementById('anpr-plate').textContent = data.last_anpr_match.plate;
-                document.getElementById('anpr-conf').textContent = (data.last_anpr_match.confidence * 100).toFixed(1) + '%';
-                const anprBadge = document.getElementById('anpr-cat-badge');
-                anprBadge.textContent = data.last_anpr_match.category;
-                anprBadge.className = 'badge ' + categoryBadgeClass(data.last_anpr_match.category);
-                document.getElementById('anpr-time').textContent = data.last_anpr_match.timestamp;
-            }
-
-            // Session alerts
-            document.getElementById('side-frs-alerts').textContent = data.frs_alerts_session;
-            document.getElementById('side-anpr-alerts').textContent = data.anpr_alerts_session;
-
-            // Flash + beep on new alert
-            if (data.frs_alerts_session > _prevFrsAlerts || data.anpr_alerts_session > _prevAnprAlerts) {
-                const sidebar = document.getElementById('stats-sidebar');
-                sidebar.classList.remove('flash-alert');
-                void sidebar.offsetWidth;
-                sidebar.classList.add('flash-alert');
-                beep();
-            }
-            _prevFrsAlerts = data.frs_alerts_session;
-            _prevAnprAlerts = data.anpr_alerts_session;
-
-            // Show video if running and currently hidden
-            if (running) {
-                const feed = document.getElementById('video-feed');
-                if (feed.style.display === 'none') {
-                    feed.src = '/stream/video?' + Date.now();
-                    feed.style.display = 'block';
-                    document.getElementById('video-placeholder').style.display = 'none';
-                }
-            } else {
-                const feed = document.getElementById('video-feed');
-                const placeholder = document.getElementById('video-placeholder');
-                if (feed.style.display !== 'none') {
-                    feed.style.display = 'none';
-                    placeholder.style.display = 'flex';
-                }
-            }
-        })
-        .catch(() => {});
-    }
-
-    setInterval(updateSidebar, 1000);
-    updateSidebar();
 </script>
 {% endblock %}

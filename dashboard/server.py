@@ -43,6 +43,11 @@ def create_app(frs_db: str, anpr_db: str) -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(settings.router)
 
+    @app.on_event("shutdown")
+    def shutdown_event():
+        from dashboard.stream_server import MULTI_CAMERA_MANAGER
+        MULTI_CAMERA_MANAGER.stop_all()
+
     return app
 
 

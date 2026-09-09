@@ -1,0 +1,30 @@
+[
+  {
+    "id": 0,
+    "name": "CAM 01: DroidCam Phone Stream",
+    "location": "Mobile Checkpost",
+    "url": "2",
+    "enabled": true
+  },
+  {
+    "id": 1,
+    "name": "CAM 02: Laptop Integrated Camera",
+    "location": "Control Room",
+    "url": "1",
+    "enabled": true
+  },
+  {
+    "id": 2,
+    "name": "CAM 03: Border Highway Perimeter",
+    "location": "Approach Road",
+    "url": "videos/palace.mp4",
+    "enabled": true
+  },
+  {
+    "id": 3,
+    "name": "CAM 04: Phone Direct WiFi Stream",
+    "location": "Sector 3 Perimeter",
+    "url": "http://10.131.46.15:4747/video",
+    "enabled": true
+  }
+]
