@@ -1,0 +1,30 @@
+[
+  {
+    "id": 0,
+    "name": "CAM 01: Checkpost Alpha",
+    "location": "Main Entrance",
+    "url": "http://192.168.137.15:4747/video",
+    "enabled": true
+  },
+  {
+    "id": 1,
+    "name": "CAM 02: North Fence Line",
+    "location": "Sector 3 Perimeter",
+    "url": "http://192.168.137.22:4747/video",
+    "enabled": true
+  },
+  {
+    "id": 2,
+    "name": "CAM 03: Laptop / USB Webcam",
+    "location": "Control Room",
+    "url": "0",
+    "enabled": true
+  },
+  {
+    "id": 3,
+    "name": "CAM 04: Border Highway",
+    "location": "Approach Road",
+    "url": "videos/palace.mp4",
+    "enabled": true
+  }
+]

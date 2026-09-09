@@ -231,7 +231,7 @@ class ANPRPipeline:
                     cand.last_attempt_time = current_time
                     should_queue = True
                 elif (
-                    cand.status == "COMPLETED"
+                    cand.status in ("COMPLETED", "NO_PLATE")
                     and quality_score > cand.best_score * self.quality_boost_ratio
                 ):
                     # Significantly better view of vehicle

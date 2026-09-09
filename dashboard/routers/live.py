@@ -1,5 +1,5 @@
 """
-Live feed router — MJPEG streaming + stream control APIs.
+Live Feed Router — Multi-Camera MJPEG Streaming, Cluster Control, and Registry APIs.
 """
 
 import os
@@ -15,98 +15,210 @@ _bytetrack_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 
 if _bytetrack_root not in sys.path:
     sys.path.insert(0, _bytetrack_root)
 
-from dashboard.stream_server import STREAM_STATE, PipelineThread, mjpeg_generator
+from dashboard.camera_manager import CAMERA_REGISTRY
+from dashboard.stream_server import MULTI_CAMERA_MANAGER, STREAM_STATE, mjpeg_generator
 
 router = APIRouter()
 
 _templates_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
 templates = Jinja2Templates(directory=_templates_dir)
 
-# Module-level pipeline thread reference
-_pipeline_thread: Optional[PipelineThread] = None
 
+# ──────────────────────────────────────────────
+# Page Views
+# ──────────────────────────────────────────────
 
 @router.get("/live")
 async def live_page(request: Request):
-    return templates.TemplateResponse(request=request, name="live.html", context={"request": request})
+    """Render the interactive multi-camera grid surveillance command center."""
+    cameras = CAMERA_REGISTRY.load_cameras()
+    return templates.TemplateResponse(
+        request=request,
+        name="live.html",
+        context={"request": request, "initial_cameras": cameras},
+    )
+
+
+# ──────────────────────────────────────────────
+# MJPEG Video Streaming Endpoints
+# ──────────────────────────────────────────────
+
+@router.get("/stream/video/{cam_id}")
+async def stream_camera_video(cam_id: int):
+    """Stream low-latency MJPEG multipart video feed for a specific camera ID."""
+    state = MULTI_CAMERA_MANAGER.get_state(cam_id)
+    return StreamingResponse(
+        mjpeg_generator(state),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 @router.get("/stream/video")
-async def stream_video():
+async def stream_primary_video():
+    """Backward-compatible endpoint streaming Camera 0 / Primary camera feed."""
     return StreamingResponse(
         mjpeg_generator(STREAM_STATE),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 
 
+# ──────────────────────────────────────────────
+# Multi-Camera Cluster Control APIs
+# ──────────────────────────────────────────────
+
+@router.get("/api/cameras")
+async def get_cameras():
+    """Return list of all configured cameras with their current live status and metrics."""
+    return JSONResponse(MULTI_CAMERA_MANAGER.get_all_stats())
+
+
+@router.post("/api/cameras")
+async def save_camera(request: Request):
+    """Add a new camera or update an existing camera configuration."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"status": "error", "message": "Invalid JSON body"}, status_code=400)
+
+    saved_cam = CAMERA_REGISTRY.upsert_camera(body)
+    cid = saved_cam.get("id", 0)
+
+    # If camera is currently active, re-sync its state
+    state = MULTI_CAMERA_MANAGER.get_state(cid)
+    state.update_stats(name=saved_cam.get("name"), location=saved_cam.get("location"))
+
+    return JSONResponse({"status": "success", "camera": saved_cam})
+
+
+@router.delete("/api/cameras/{cam_id}")
+async def delete_camera(cam_id: int):
+    """Delete a camera from the registry and stop its stream if running."""
+    MULTI_CAMERA_MANAGER.stop_camera(cam_id)
+    success = CAMERA_REGISTRY.delete_camera(cam_id)
+    return JSONResponse({"status": "deleted" if success else "not_found", "cam_id": cam_id})
+
+
+@router.post("/api/cameras/{cam_id}/toggle")
+async def toggle_camera(cam_id: int, request: Request):
+    """Toggle enabled/disabled state of a camera."""
+    try:
+        body = await request.json()
+        enabled = body.get("enabled", None)
+    except Exception:
+        enabled = None
+
+    cam = CAMERA_REGISTRY.toggle_camera(cam_id, enabled)
+    if not cam:
+        return JSONResponse({"status": "error", "message": f"Camera {cam_id} not found"}, status_code=404)
+
+    if not cam.get("enabled"):
+        MULTI_CAMERA_MANAGER.stop_camera(cam_id)
+
+    return JSONResponse({"status": "success", "camera": cam})
+
+
+@router.post("/api/cameras/{cam_id}/start")
+async def start_camera_stream(cam_id: int, request: Request):
+    """Start ingestion and tracking pipeline for a specific camera."""
+    try:
+        config = await request.json()
+    except Exception:
+        config = {}
+
+    success = MULTI_CAMERA_MANAGER.start_camera(cam_id, config)
+    state = MULTI_CAMERA_MANAGER.get_state(cam_id)
+
+    return JSONResponse({
+        "status": "started" if success else "failed",
+        "cam_id": cam_id,
+        "camera_stats": state.get_stats(),
+    })
+
+
+@router.post("/api/cameras/{cam_id}/stop")
+async def stop_camera_stream(cam_id: int):
+    """Stop ingestion and tracking pipeline for a specific camera."""
+    success = MULTI_CAMERA_MANAGER.stop_camera(cam_id)
+    return JSONResponse({
+        "status": "stopped" if success else "not_running",
+        "cam_id": cam_id,
+    })
+
+
+@router.post("/api/cameras/start_all")
+async def start_all_cameras(request: Request):
+    """Concurrently start all enabled cameras in the cluster."""
+    try:
+        config = await request.json()
+    except Exception:
+        config = {}
+
+    results = MULTI_CAMERA_MANAGER.start_all(config)
+    return JSONResponse({
+        "status": "started_all",
+        "results": results,
+    })
+
+
+@router.post("/api/cameras/stop_all")
+async def stop_all_cameras():
+    """Concurrently stop all active cameras in the cluster."""
+    results = MULTI_CAMERA_MANAGER.stop_all()
+    return JSONResponse({
+        "status": "stopped_all",
+        "results": results,
+    })
+
+
+@router.get("/api/cameras/{cam_id}/stats")
+async def get_camera_stats(cam_id: int):
+    """Get real-time telemetry stats for a specific camera."""
+    state = MULTI_CAMERA_MANAGER.get_state(cam_id)
+    return JSONResponse(state.get_stats())
+
+
+@router.get("/api/cameras/stats_all")
+async def get_all_camera_stats():
+    """Get real-time cluster telemetry stats across all cameras."""
+    return JSONResponse(MULTI_CAMERA_MANAGER.get_all_stats())
+
+
+# ──────────────────────────────────────────────
+# Backward Compatibility Endpoints
+# ──────────────────────────────────────────────
+
 @router.post("/api/stream/start")
 async def start_stream(request: Request):
-    global _pipeline_thread
-
+    """Legacy start API: starts Camera 0 or specified source."""
     try:
         body = await request.json()
     except Exception:
         body = {}
 
-    # Stop existing thread if running
-    if _pipeline_thread is not None and _pipeline_thread.is_alive():
-        _pipeline_thread.stop()
-        _pipeline_thread.join(timeout=3)
-        _pipeline_thread = None
+    source = body.get("source", "0")
+    # Update camera 0 url if provided
+    cam = CAMERA_REGISTRY.get_camera(0)
+    if cam:
+        cam["url"] = source
+        CAMERA_REGISTRY.upsert_camera(cam)
 
-    STREAM_STATE.reset()
-
-    config = {
-        "source": body.get("source", "1"),
-        "device": body.get("device", "gpu"),
-        "fp16": bool(body.get("fp16", True)),
-        "enable_frs": bool(body.get("enable_frs", False)),
-        "enable_anpr": bool(body.get("enable_anpr", False)),
-        "enable_motion_alert": bool(body.get("enable_motion_alert", True)),
-        "detect_skip": int(body.get("detect_skip", 1)),
-        "exp_file": body.get("exp_file", "exps/example/mot/yolox_x_mix_det.py"),
-        "ckpt_file": body.get("ckpt_file", "pretrained/bytetrack_x_mot17.pth.tar"),
-        "frs_db": body.get("frs_db", "frs_faces.db"),
-        "anpr_db": body.get("anpr_db", "anpr_watchlist.db"),
-        "frs_min_area": float(body.get("frs_min_area", 1500.0)),
-        "frs_threshold": float(body.get("frs_threshold", 0.60)),
-        "frs_workers": int(body.get("frs_workers", 1)),
-        "anpr_min_area": float(body.get("anpr_min_area", 800.0)),
-        "anpr_workers": int(body.get("anpr_workers", 1)),
-        "track_thresh": float(body.get("track_thresh", 0.25)),
-        "track_buffer": int(body.get("track_buffer", 30)),
-        "match_thresh": float(body.get("match_thresh", 0.8)),
-        "detector_mode": body.get("detector_mode", "single_class_test"),
-        "alert_low": float(body.get("alert_low", 20.0)),
-        "alert_med": float(body.get("alert_med", 60.0)),
-        "alert_high": float(body.get("alert_high", 120.0)),
-    }
-
-    _pipeline_thread = PipelineThread(config, STREAM_STATE)
-    _pipeline_thread.start()
-
+    MULTI_CAMERA_MANAGER.start_camera(0, body)
     return JSONResponse({
         "status": "started",
-        "source": config["source"],
-        "device": config["device"],
-        "fp16": config["fp16"],
+        "source": source,
+        "device": body.get("device", "gpu"),
+        "fp16": body.get("fp16", True),
     })
 
 
 @router.post("/api/stream/stop")
 async def stop_stream():
-    global _pipeline_thread
-
-    if _pipeline_thread is not None and _pipeline_thread.is_alive():
-        _pipeline_thread.stop()
-        _pipeline_thread.join(timeout=3)
-        _pipeline_thread = None
-        STREAM_STATE.update_stats(is_running=False)
-        return JSONResponse({"status": "stopped"})
-
-    return JSONResponse({"status": "not_running"})
+    """Legacy stop API: stops Camera 0."""
+    MULTI_CAMERA_MANAGER.stop_camera(0)
+    return JSONResponse({"status": "stopped"})
 
 
 @router.get("/api/live/stats")
 async def live_stats():
+    """Legacy stats API: returns Camera 0 telemetry."""
     return JSONResponse(STREAM_STATE.get_stats())
