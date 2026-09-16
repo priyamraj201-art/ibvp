@@ -6,7 +6,9 @@ import os
 import sys
 from typing import Optional
 
-from fastapi import APIRouter, Request
+import cv2
+import numpy as np
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
@@ -259,3 +261,29 @@ async def phonecam_join_page(request: Request, pair_token: str):
         status_code=200 if valid else 404,
     )
     return response
+
+
+@router.websocket("/ws/phonecam/{pair_token}/{device_id}")
+async def phonecam_websocket(websocket: WebSocket, pair_token: str, device_id: str):
+    """Receives JPEG frames pushed from a phone's browser and feeds them
+    into that device's PhoneCamCapture, registering it as a live camera
+    on first connect."""
+    from dashboard.phonecam import PHONE_DEVICE_REGISTRY
+
+    if not PHONE_DEVICE_REGISTRY.is_token_valid(pair_token):
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    name = websocket.query_params.get("name") or "Phone Camera"
+    PHONE_DEVICE_REGISTRY.register_device(device_id, name)
+    capture = PHONE_DEVICE_REGISTRY.get_or_create_capture(device_id)
+
+    try:
+        while True:
+            data = await websocket.receive_bytes()
+            frame = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if frame is not None:
+                capture.push_frame(frame)
+    except WebSocketDisconnect:
+        pass
