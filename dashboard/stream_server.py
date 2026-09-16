@@ -48,6 +48,7 @@ from yolox.utils.visualize import plot_tracking
 from yolox.tracking_utils.timer import Timer
 from demo_track import Predictor
 from dashboard.camera_manager import CAMERA_REGISTRY
+from dashboard.auto_exposure import AutoExposureCorrector, NIGHT_VISION, GLARE_CORRECTION
 
 
 # ──────────────────────────────────────────────
@@ -70,6 +71,7 @@ class CameraStats:
     vehicle_count: int = 0
     motion_alert_level: str = "NORMAL"  # "NORMAL", "LOW", "MEDIUM", "HIGH"
     motion_alert_color: str = "#22c55e"
+    lighting_mode: str = "NORMAL"  # "NORMAL", "NIGHT_VISION", "GLARE_CORRECTION"
     error_message: str = ""
     last_frs_match: Optional[Dict[str, Any]] = None
     last_anpr_match: Optional[Dict[str, Any]] = None
@@ -138,6 +140,7 @@ class CameraStreamState:
                 "vehicle_count": s.vehicle_count,
                 "motion_alert_level": s.motion_alert_level,
                 "motion_alert_color": s.motion_alert_color,
+                "lighting_mode": s.lighting_mode,
                 "error_message": s.error_message,
                 "frs_alerts_session": s.frs_alerts_session,
                 "anpr_alerts_session": s.anpr_alerts_session,
@@ -477,6 +480,7 @@ class CameraPipelineWorker(threading.Thread):
         self.state = stream_state
         self.cap: Optional[ZeroLagCapture] = None
         self._stop_event = threading.Event()
+        self.auto_exposure = AutoExposureCorrector()
 
     def stop(self):
         self._stop_event.set()
@@ -592,6 +596,8 @@ class CameraPipelineWorker(threading.Thread):
             if not ret or frame is None:
                 time.sleep(0.01)
                 continue
+
+            frame, lighting_mode = self.auto_exposure.process(frame)
 
             frame_id += 1
             now_t = time.time()
@@ -794,6 +800,26 @@ class CameraPipelineWorker(threading.Thread):
                     show_header=False,
                 )
 
+            # Auto lighting correction HUD badge (Top-Right, below motion badge)
+            if lighting_mode != "NORMAL":
+                badge_text, badge_color = {
+                    NIGHT_VISION: ("NIGHT VISION", (150, 60, 20)),
+                    GLARE_CORRECTION: ("GLARE CORRECTION", (0, 165, 255)),
+                }[lighting_mode]
+                h, w = online_im.shape[:2]
+                cv2.rectangle(online_im, (w - 210, 46), (w - 8, 78), badge_color, -1)
+                cv2.putText(
+                    online_im, badge_text, (w - 200, 69),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2,
+                )
+
+            # Draw Device & Hardware Info (Bottom-Left)
+            dev_badge = f"{SHARED_DETECTOR.device_name} | FP16:{'ON' if SHARED_DETECTOR.fp16_enabled else 'OFF'}"
+            cv2.putText(
+                online_im, dev_badge, (12, online_im.shape[0] - 12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 128), 1, cv2.LINE_AA,
+            )
+
             # Web preview scaling: maintain crisp 720p HD, only downsample 4K/1080p > 1280 using INTER_AREA
             h_im, w_im = online_im.shape[:2]
             if w_im > 1280:
@@ -813,6 +839,7 @@ class CameraPipelineWorker(threading.Thread):
                 vehicle_count=vehicle_count,
                 motion_alert_level=current_alert,
                 motion_alert_color=ALERT_COLORS.get(current_alert, "#22c55e"),
+                lighting_mode=lighting_mode,
             )
 
             # Responsive yield
