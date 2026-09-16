@@ -6,6 +6,9 @@ __pycache__/
 # Superpowers subagent-driven-development scratch workspace
 .superpowers/
 
+# Self-signed TLS certs for local HTTPS (regenerated per machine)
+certs/
+
 # C extensions
 *.so
 

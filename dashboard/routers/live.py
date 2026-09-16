@@ -238,7 +238,8 @@ async def create_phonecam_pair(request: Request):
     token = PHONE_DEVICE_REGISTRY.create_pair_token()
     lan_ip = get_lan_ip()
     port = request.url.port or 8000
-    join_url = f"http://{lan_ip}:{port}/phonecam/join/{token}"
+    scheme = request.url.scheme
+    join_url = f"{scheme}://{lan_ip}:{port}/phonecam/join/{token}"
     qr_b64 = generate_qr_png_base64(join_url)
 
     return JSONResponse({

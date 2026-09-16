@@ -83,13 +83,25 @@ def main():
     print(f"  ANPR DB exists: {os.path.isfile(anpr_db)}")
     print(f"  ByteTrack Root: {_BYTETRACK_ROOT}")
     print("=" * 60)
-    print(f"  Dashboard running at http://localhost:{args.port}")
+    print(f"  Dashboard running at https://localhost:{args.port}")
     print("=" * 60)
 
     app = create_app(frs_db, anpr_db)
 
+    from dashboard.phonecam import get_lan_ip
+    from dashboard.tls import ensure_self_signed_cert
+
+    certs_dir = os.path.join(_BYTETRACK_ROOT, "certs")
+    cert_path, key_path = ensure_self_signed_cert(certs_dir, get_lan_ip())
+    print(f"  HTTPS enabled (self-signed cert): {cert_path}")
+    print("  Phones will see a one-time 'connection isn't private' warning — this is expected for a local self-signed cert.")
+    print("=" * 60)
+
     import uvicorn
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(
+        app, host=args.host, port=args.port, log_level="info",
+        ssl_certfile=cert_path, ssl_keyfile=key_path,
+    )
 
 
 if __name__ == "__main__":
