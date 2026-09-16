@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Superpowers subagent-driven-development scratch workspace
+.superpowers/
+
 # C extensions
 *.so
 
