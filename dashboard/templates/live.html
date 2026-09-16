@@ -1301,6 +1301,9 @@
         document.getElementById('phonecam-status').textContent = 'Generating pairing link...';
         try {
             const res = await fetch('/api/phonecam/pair', { method: 'POST' });
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
             const data = await res.json();
             document.getElementById('phonecam-qr-img').src = 'data:image/png;base64,' + data.qr_png_base64;
             document.getElementById('phonecam-join-url').value = data.join_url;
