@@ -569,6 +569,9 @@
         <button type="button" class="btn btn-secondary" onclick="openAddCameraModal()" style="display: inline-flex; align-items: center; gap: 6px;">
             <span>➕</span> Add Camera
         </button>
+        <button type="button" class="btn btn-secondary" onclick="openPhoneCamModal()" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span>📱</span> Add Phone Camera
+        </button>
         <button type="button" class="btn btn-secondary" onclick="toggleSettingsDrawer()" style="display: inline-flex; align-items: center; gap: 6px;">
             <span>⚙</span> AI & Hardware Config
         </button>
@@ -787,6 +790,24 @@
                 <button type="button" class="btn btn-secondary btn-sm" onclick="closeCameraModal()">Cancel</button>
                 <button type="submit" form="camera-form" class="btn btn-primary btn-sm">Save Camera</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="phonecam-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>Add Phone Camera</h3>
+            <button type="button" style="background:none; border:none; font-size:18px; cursor:pointer; color:var(--text-muted);" onclick="closePhoneCamModal()">✕</button>
+        </div>
+        <div class="modal-body" style="text-align:center;">
+            <p style="color:var(--text-muted); font-size:13px;">Scan this QR code with your phone's camera app. No app install needed — it opens in your phone's browser.</p>
+            <img id="phonecam-qr-img" src="" alt="Pairing QR code" style="width:220px; height:220px; margin:16px auto; display:block; border-radius:8px; border:1px solid var(--border);">
+            <input type="text" id="phonecam-join-url" class="form-control" readonly style="text-align:center; font-size:12px;">
+            <p id="phonecam-status" style="color:var(--text-muted); font-size:12px; margin-top:10px;">Generating pairing link...</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="closePhoneCamModal()" style="margin-left:auto;">Close</button>
         </div>
     </div>
 </div>
@@ -1273,6 +1294,24 @@
 
     function closeCameraModal() {
         document.getElementById('camera-modal').classList.remove('open');
+    }
+
+    async function openPhoneCamModal() {
+        document.getElementById('phonecam-modal').classList.add('open');
+        document.getElementById('phonecam-status').textContent = 'Generating pairing link...';
+        try {
+            const res = await fetch('/api/phonecam/pair', { method: 'POST' });
+            const data = await res.json();
+            document.getElementById('phonecam-qr-img').src = 'data:image/png;base64,' + data.qr_png_base64;
+            document.getElementById('phonecam-join-url').value = data.join_url;
+            document.getElementById('phonecam-status').textContent = 'Link expires in 10 minutes.';
+        } catch (e) {
+            document.getElementById('phonecam-status').textContent = 'Failed to generate pairing link.';
+        }
+    }
+
+    function closePhoneCamModal() {
+        document.getElementById('phonecam-modal').classList.remove('open');
     }
 
     function applyPreset(type) {
