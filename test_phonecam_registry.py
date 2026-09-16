@@ -7,7 +7,6 @@ import sys
 import time
 import base64
 import pytest
-import threading
 from concurrent.futures import ThreadPoolExecutor
 
 _bytetrack_root = os.path.abspath(os.path.dirname(__file__))
@@ -19,8 +18,8 @@ from dashboard.phonecam import (
     get_lan_ip,
     generate_qr_png_base64,
 )
-from dashboard.stream_server import PhoneCamCapture
-from dashboard.camera_manager import CAMERA_REGISTRY
+from dashboard.stream_server import PhoneCamCapture, MultiCameraManager
+from dashboard.camera_manager import CameraManager
 
 
 def test_get_lan_ip_returns_a_nonempty_string():
@@ -65,29 +64,71 @@ def test_get_or_create_capture_returns_different_instances_for_different_devices
     assert cap1 is not cap2
 
 
-def test_register_device_first_time_returns_int_cam_id():
+def test_register_device_first_time_returns_int_cam_id(tmp_path, monkeypatch):
+    """Test first-time device registration with isolated CameraManager and MultiCameraManager."""
+    # Create isolated instances
+    cfg_file = str(tmp_path / "test_cameras.json")
+    isolated_camera_registry = CameraManager(config_path=cfg_file)
+    isolated_multi_camera_manager = MultiCameraManager()
+
+    # Monkeypatch the module-level singletons
+    import dashboard.phonecam
+    import dashboard.stream_server
+    monkeypatch.setattr(dashboard.phonecam, "CAMERA_REGISTRY", isolated_camera_registry)
+    monkeypatch.setattr(dashboard.phonecam, "MULTI_CAMERA_MANAGER", isolated_multi_camera_manager)
+    monkeypatch.setattr(dashboard.stream_server, "CAMERA_REGISTRY", isolated_camera_registry)
+
+    # Now test with isolated registry
     registry = PhoneDeviceRegistry()
     cam_id = registry.register_device("test-device-1", "Test Camera 1")
     assert isinstance(cam_id, int)
     assert cam_id > 0
 
 
-def test_register_device_reconnect_returns_same_cam_id():
+def test_register_device_reconnect_returns_same_cam_id(tmp_path, monkeypatch):
+    """Test reconnect scenario with isolated CameraManager and MultiCameraManager."""
+    # Create isolated instances
+    cfg_file = str(tmp_path / "test_cameras.json")
+    isolated_camera_registry = CameraManager(config_path=cfg_file)
+    isolated_multi_camera_manager = MultiCameraManager()
+
+    # Monkeypatch the module-level singletons
+    import dashboard.phonecam
+    import dashboard.stream_server
+    monkeypatch.setattr(dashboard.phonecam, "CAMERA_REGISTRY", isolated_camera_registry)
+    monkeypatch.setattr(dashboard.phonecam, "MULTI_CAMERA_MANAGER", isolated_multi_camera_manager)
+    monkeypatch.setattr(dashboard.stream_server, "CAMERA_REGISTRY", isolated_camera_registry)
+
+    # Test with isolated registry
     registry = PhoneDeviceRegistry()
     cam_id_1 = registry.register_device("test-device-2", "Test Camera 2")
     # Count cameras before reconnect
-    initial_camera_count = len(CAMERA_REGISTRY.load_cameras())
+    initial_camera_count = len(isolated_camera_registry.load_cameras())
     # Call again with same device_id (reconnect scenario)
     cam_id_2 = registry.register_device("test-device-2", "Test Camera 2 Updated")
     # Count cameras after reconnect
-    final_camera_count = len(CAMERA_REGISTRY.load_cameras())
+    final_camera_count = len(isolated_camera_registry.load_cameras())
     # Should return same cam_id
     assert cam_id_1 == cam_id_2
     # Should NOT have created a new camera entry (count should be the same)
     assert initial_camera_count == final_camera_count
 
 
-def test_register_device_concurrent_same_device_no_race():
+def test_register_device_concurrent_same_device_no_race(tmp_path, monkeypatch):
+    """Test concurrency with isolated CameraManager and MultiCameraManager."""
+    # Create isolated instances
+    cfg_file = str(tmp_path / "test_cameras.json")
+    isolated_camera_registry = CameraManager(config_path=cfg_file)
+    isolated_multi_camera_manager = MultiCameraManager()
+
+    # Monkeypatch the module-level singletons
+    import dashboard.phonecam
+    import dashboard.stream_server
+    monkeypatch.setattr(dashboard.phonecam, "CAMERA_REGISTRY", isolated_camera_registry)
+    monkeypatch.setattr(dashboard.phonecam, "MULTI_CAMERA_MANAGER", isolated_multi_camera_manager)
+    monkeypatch.setattr(dashboard.stream_server, "CAMERA_REGISTRY", isolated_camera_registry)
+
+    # Test concurrency with isolated registry
     registry = PhoneDeviceRegistry()
     device_id = "concurrent-test-device"
     results = []
@@ -108,7 +149,7 @@ def test_register_device_concurrent_same_device_no_race():
     assert device_id in registry._device_cam_ids
     cam_id = registry._device_cam_ids[device_id]
     # Find this camera in the registry to verify it exists (and is the only one for this device)
-    all_cameras = CAMERA_REGISTRY.load_cameras()
+    all_cameras = isolated_camera_registry.load_cameras()
     matching_cameras = [c for c in all_cameras if c.get("id") == cam_id]
     assert len(matching_cameras) == 1, f"Expected exactly one camera with cam_id={cam_id}, got {matching_cameras}"
 
