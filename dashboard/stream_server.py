@@ -545,12 +545,21 @@ class CameraPipelineWorker(threading.Thread):
         finally:
             self.state.update_stats(is_running=False, status="OFFLINE", fps=0.0)
 
+    def _resolve_capture(self):
+        """Pick the capture backend for this camera's configured source."""
+        if self.source_url.startswith("phonecam://"):
+            device_id = self.source_url[len("phonecam://"):]
+            from dashboard.phonecam import PHONE_DEVICE_REGISTRY
+            return PHONE_DEVICE_REGISTRY.get_or_create_capture(device_id)
+        return ZeroLagCapture(self.source_url)
+
     def _run_loop(self):
         self.state.update_stats(is_running=True, status="CONNECTING", error_message="")
         logger.info(f"[CamWorker-{self.cam_id}] Starting capture for {self.cam_name} from: {self.source_url}")
 
-        # Start decoupled Zero-Lag Capture
-        self.cap = ZeroLagCapture(self.source_url)
+        # Start capture: PhoneCamCapture for browser-pushed phone streams,
+        # ZeroLagCapture for everything else (webcam/RTSP/DroidCam/file).
+        self.cap = self._resolve_capture()
         if not self.cap.start():
             err = getattr(self.cap, 'error_label', '') or f"Failed to connect: {self.source_url}"
             logger.warning(f"[CamWorker-{self.cam_id}] {err}")
