@@ -222,3 +222,40 @@ async def stop_stream():
 async def live_stats():
     """Legacy stats API: returns Camera 0 telemetry."""
     return JSONResponse(STREAM_STATE.get_stats())
+
+
+# ──────────────────────────────────────────────
+# Phone Camera "Shared Perception" — Pairing & Join
+# ──────────────────────────────────────────────
+
+@router.post("/api/phonecam/pair")
+async def create_phonecam_pair(request: Request):
+    """Generate a short-lived pairing token + QR code for a phone to join as a camera."""
+    from dashboard.phonecam import PHONE_DEVICE_REGISTRY, get_lan_ip, generate_qr_png_base64
+
+    token = PHONE_DEVICE_REGISTRY.create_pair_token()
+    lan_ip = get_lan_ip()
+    port = request.url.port or 8000
+    join_url = f"http://{lan_ip}:{port}/phonecam/join/{token}"
+    qr_b64 = generate_qr_png_base64(join_url)
+
+    return JSONResponse({
+        "join_url": join_url,
+        "qr_png_base64": qr_b64,
+        "expires_in": PHONE_DEVICE_REGISTRY.PAIR_TOKEN_TTL_SECONDS,
+    })
+
+
+@router.get("/phonecam/join/{pair_token}")
+async def phonecam_join_page(request: Request, pair_token: str):
+    """Mobile-facing page a phone opens after scanning the pairing QR code."""
+    from dashboard.phonecam import PHONE_DEVICE_REGISTRY
+
+    valid = PHONE_DEVICE_REGISTRY.is_token_valid(pair_token)
+    response = templates.TemplateResponse(
+        request=request,
+        name="phonecam_join.html",
+        context={"request": request, "pair_token": pair_token, "expired": not valid},
+        status_code=200 if valid else 404,
+    )
+    return response

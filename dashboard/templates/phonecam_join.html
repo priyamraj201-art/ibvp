@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Join as Camera — IBVAP</title>
+<style>
+  body {
+    margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #0f172a; color: #f1f5f9; display: flex; flex-direction: column;
+    align-items: center; padding: 24px 16px; min-height: 100vh; box-sizing: border-box;
+  }
+  h2 { font-size: 18px; margin: 8px 0 16px; text-align: center; }
+  video { width: 100%; max-width: 480px; border-radius: 12px; background: #000; }
+  input[type=text] {
+    width: 100%; max-width: 480px; box-sizing: border-box; padding: 10px;
+    border-radius: 8px; border: 1px solid #334155; background: #1e293b;
+    color: #f1f5f9; margin: 12px 0; font-size: 16px;
+  }
+  button {
+    width: 100%; max-width: 480px; padding: 14px; border-radius: 8px; border: none;
+    background: #2563eb; color: #fff; font-size: 16px; font-weight: 600;
+  }
+  button:disabled { background: #475569; }
+  #status { margin-top: 14px; font-size: 14px; color: #94a3b8; text-align: center; }
+  .error { color: #f87171; }
+</style>
+</head>
+<body>
+{% if expired %}
+  <h2>Pairing link expired</h2>
+  <p style="color:#94a3b8; text-align:center;">Generate a new QR code from the dashboard's "Add Phone Camera" button and scan again.</p>
+{% else %}
+  <h2>Join as a Live Camera</h2>
+  <video id="preview" autoplay playsinline muted></video>
+  <input type="text" id="device-name" placeholder="Name this camera (e.g. Gate 2)">
+  <button id="start-btn">Start Sharing</button>
+  <div id="status"></div>
+
+  <script>
+    const pairToken = "{{ pair_token }}";
+    const video = document.getElementById('preview');
+    const startBtn = document.getElementById('start-btn');
+    const statusEl = document.getElementById('status');
+    const nameInput = document.getElementById('device-name');
+    let ws = null;
+
+    function getDeviceId() {
+      let id = localStorage.getItem('ibvap_phonecam_device_id');
+      if (!id) {
+        id = 'phone-' + Math.random().toString(36).slice(2, 10);
+        localStorage.setItem('ibvap_phonecam_device_id', id);
+      }
+      return id;
+    }
+
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }, audio: false,
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        statusEl.textContent = 'Camera permission denied: ' + err.message;
+        statusEl.className = 'error';
+        startBtn.disabled = true;
+      }
+    }
+
+    function sendFrames() {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const maxWidth = 960;
+
+      function loop() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (video.videoWidth > 0) {
+          const scale = Math.min(1, maxWidth / video.videoWidth);
+          canvas.width = video.videoWidth * scale;
+          canvas.height = video.videoHeight * scale;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => {
+            if (blob && ws && ws.readyState === WebSocket.OPEN) {
+              blob.arrayBuffer().then((buf) => ws.send(buf));
+            }
+          }, 'image/jpeg', 0.7);
+        }
+        setTimeout(loop, 85); // ~12 fps
+      }
+      loop();
+    }
+
+    function startSharing() {
+      const deviceId = getDeviceId();
+      const name = encodeURIComponent(nameInput.value || 'Phone Camera');
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${proto}://${location.host}/ws/phonecam/${pairToken}/${deviceId}?name=${name}`);
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = () => {
+        statusEl.textContent = 'Sharing live — keep this tab open.';
+        startBtn.disabled = true;
+        startBtn.textContent = 'Sharing...';
+        sendFrames();
+      };
+      ws.onclose = () => {
+        statusEl.textContent = 'Disconnected. Tap Start Sharing to resume.';
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Sharing';
+      };
+      ws.onerror = () => {
+        statusEl.textContent = 'Connection error.';
+        statusEl.className = 'error';
+      };
+    }
+
+    startBtn.addEventListener('click', startSharing);
+    initCamera();
+  </script>
+{% endif %}
+</body>
+</html>
