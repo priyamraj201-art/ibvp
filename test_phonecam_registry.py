@@ -7,6 +7,8 @@ import sys
 import time
 import base64
 import pytest
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 _bytetrack_root = os.path.abspath(os.path.dirname(__file__))
 if _bytetrack_root not in sys.path:
@@ -18,6 +20,7 @@ from dashboard.phonecam import (
     generate_qr_png_base64,
 )
 from dashboard.stream_server import PhoneCamCapture
+from dashboard.camera_manager import CAMERA_REGISTRY
 
 
 def test_get_lan_ip_returns_a_nonempty_string():
@@ -60,6 +63,54 @@ def test_get_or_create_capture_returns_different_instances_for_different_devices
     cap1 = registry.get_or_create_capture("device-b")
     cap2 = registry.get_or_create_capture("device-c")
     assert cap1 is not cap2
+
+
+def test_register_device_first_time_returns_int_cam_id():
+    registry = PhoneDeviceRegistry()
+    cam_id = registry.register_device("test-device-1", "Test Camera 1")
+    assert isinstance(cam_id, int)
+    assert cam_id > 0
+
+
+def test_register_device_reconnect_returns_same_cam_id():
+    registry = PhoneDeviceRegistry()
+    cam_id_1 = registry.register_device("test-device-2", "Test Camera 2")
+    # Count cameras before reconnect
+    initial_camera_count = len(CAMERA_REGISTRY.load_cameras())
+    # Call again with same device_id (reconnect scenario)
+    cam_id_2 = registry.register_device("test-device-2", "Test Camera 2 Updated")
+    # Count cameras after reconnect
+    final_camera_count = len(CAMERA_REGISTRY.load_cameras())
+    # Should return same cam_id
+    assert cam_id_1 == cam_id_2
+    # Should NOT have created a new camera entry (count should be the same)
+    assert initial_camera_count == final_camera_count
+
+
+def test_register_device_concurrent_same_device_no_race():
+    registry = PhoneDeviceRegistry()
+    device_id = "concurrent-test-device"
+    results = []
+
+    def register_in_thread():
+        cam_id = registry.register_device(device_id, "Concurrent Test")
+        results.append(cam_id)
+
+    # Spin up multiple threads all registering the same device_id
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(register_in_thread) for _ in range(10)]
+        for future in futures:
+            future.result()
+
+    # All threads should have gotten the same cam_id
+    assert len(set(results)) == 1, f"Expected all threads to return same cam_id, got {results}"
+    # There should be exactly one entry in _device_cam_ids for this device
+    assert device_id in registry._device_cam_ids
+    cam_id = registry._device_cam_ids[device_id]
+    # Find this camera in the registry to verify it exists (and is the only one for this device)
+    all_cameras = CAMERA_REGISTRY.load_cameras()
+    matching_cameras = [c for c in all_cameras if c.get("id") == cam_id]
+    assert len(matching_cameras) == 1, f"Expected exactly one camera with cam_id={cam_id}, got {matching_cameras}"
 
 
 if __name__ == "__main__":

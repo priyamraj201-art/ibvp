@@ -55,7 +55,7 @@ class PhoneDeviceRegistry:
     PAIR_TOKEN_TTL_SECONDS = 600  # 10 minutes
 
     def __init__(self):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._pair_tokens: Dict[str, float] = {}  # token -> expiry epoch
         self._captures: Dict[str, PhoneCamCapture] = {}  # device_id -> capture
         self._device_cam_ids: Dict[str, int] = {}  # device_id -> cam_id
@@ -84,18 +84,18 @@ class PhoneDeviceRegistry:
         """
         with self._lock:
             existing_cam_id = self._device_cam_ids.get(device_id)
-        if existing_cam_id is not None:
-            return existing_cam_id
+            if existing_cam_id is not None:
+                return existing_cam_id
 
-        cam = CAMERA_REGISTRY.upsert_camera({
-            "name": name or "Phone Camera",
-            "location": "Phone (Shared Perception)",
-            "url": f"phonecam://{device_id}",
-            "enabled": True,
-        })
-        cam_id = cam["id"]
-        with self._lock:
+            cam = CAMERA_REGISTRY.upsert_camera({
+                "name": name or "Phone Camera",
+                "location": "Phone (Shared Perception)",
+                "url": f"phonecam://{device_id}",
+                "enabled": True,
+            })
+            cam_id = cam["id"]
             self._device_cam_ids[device_id] = cam_id
+
         logger.info(f"[PhoneCam] Registered device {device_id} as camera {cam_id} ({name})")
         MULTI_CAMERA_MANAGER.start_camera(cam_id)
         return cam_id
