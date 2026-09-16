@@ -12,6 +12,11 @@
 
 <!-- Stat Cards -->
 <div class="stat-cards">
+    <div class="stat-card" style="cursor: pointer;" onclick="location.href='/entities'">
+        <div class="stat-label">Tracked Entities (Total)</div>
+        <div class="stat-value" style="color: var(--primary);">{{ entity_stats.total_entities or 0 }}</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">{{ entity_stats.total_identified or 0 }} Known · {{ entity_stats.total_unidentified or 0 }} Unidentified</div>
+    </div>
     <div class="stat-card">
         <div class="stat-label">Enrolled Faces</div>
         <div class="stat-value">{{ frs_count }}</div>

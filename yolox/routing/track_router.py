@@ -141,6 +141,7 @@ class TrackRouter:
         detector_mode: str = DetectorMode.SINGLE_CLASS_TEST,
         frame_id: int = 0,
         fps: float = 0.0,
+        show_header: bool = True,
     ) -> np.ndarray:
         """
         Render unified visual overlay displaying:
@@ -201,13 +202,14 @@ class TrackRouter:
             box_thick = 3 if is_flagged else 2
             cv2.rectangle(im, (x1, y1), (x2, y2), color, box_thick)
 
-            # Human badge
+            # Human badge with Persistent ID
+            pid_label = getattr(track, "persistent_id", None) or f"PER-{tid:04d}"
             if is_identified:
                 name = face_info.get("name", "Identified")
                 cat = face_info.get("category", "KNOWN")
-                badge_text = f"[{cat}] {name} | {speed:.0f} px/s [{level}]"
+                badge_text = f"[{pid_label} | {cat}] {name} | {speed:.0f} px/s [{level}]"
             else:
-                badge_text = f"HUMAN #{tid} | {speed:.0f} px/s [{level}]"
+                badge_text = f"[{pid_label}] Unidentified | {speed:.0f} px/s [{level}]"
 
             (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             by1 = max(0, y1 - th - 8)
@@ -215,7 +217,7 @@ class TrackRouter:
             text_col = (255, 255, 255) if is_flagged else (0, 0, 0)
             cv2.putText(im, badge_text, (x1 + 4, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_col, 1, cv2.LINE_AA)
 
-        # 2. Render Vehicle Tracks (ANPR Badges)
+        # 2. Render Vehicle Tracks (ANPR Badges with Persistent ID)
         if anpr_results is not None:
             for track in routing_result.vehicle_tracks:
                 tid = track.track_id
@@ -223,6 +225,7 @@ class TrackRouter:
                 x1, y1, w, h = map(int, tlwh)
                 x2, y2 = x1 + w, y1 + h
 
+                pid_label = getattr(track, "persistent_id", None) or f"VEH-{tid:04d}"
                 plate_info = anpr_results.get(tid)
                 if plate_info and plate_info.get("plate_number"):
                     plate = plate_info["plate_number"]
@@ -234,7 +237,7 @@ class TrackRouter:
                     box_thick = 3 if is_flagged else 2
                     cv2.rectangle(im, (x1, y1), (x2, y2), box_color, box_thick)
 
-                    tag = f"[ALERT: {category}] {plate}" if is_flagged else f"[VEHICLE #{tid}] {plate}"
+                    tag = f"[{pid_label} | {category}] {plate}" if is_flagged else f"[{pid_label}] {plate}"
                     (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
                     by1 = max(0, y1 - th - 8)
                     cv2.rectangle(im, (x1, by1), (x1 + tw + 8, y1), box_color, -1)
@@ -242,26 +245,27 @@ class TrackRouter:
                 else:
                     # Vehicle without plate result yet
                     cv2.rectangle(im, (x1, y1), (x2, y2), (230, 180, 0), 2)
-                    tag = f"[VEHICLE #{tid}]"
+                    tag = f"[{pid_label}] Unidentified"
                     (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
                     by1 = max(0, y1 - th - 8)
                     cv2.rectangle(im, (x1, by1), (x1 + tw + 8, y1), (230, 180, 0), -1)
                     cv2.putText(im, tag, (x1 + 4, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
-        # 3. Top Unified Dashboard Header
-        hud_h = 45
-        overlay = im.copy()
-        cv2.rectangle(overlay, (0, 0), (im_w, hud_h), (20, 20, 20), -1)
-        cv2.addWeighted(overlay, 0.85, im, 0.15, 0, im)
+        # 3. Top Unified Dashboard Header (optional, disabled in dashboard web streams)
+        if show_header:
+            hud_h = 45
+            overlay = im.copy()
+            cv2.rectangle(overlay, (0, 0), (im_w, hud_h), (20, 20, 20), -1)
+            cv2.addWeighted(overlay, 0.85, im, 0.15, 0, im)
 
-        # Left status text
-        mode_tag = "PRODUCTION (2-CLASS)" if detector_mode == DetectorMode.MULTI_CLASS_PRODUCTION else "TEST (SINGLE-CLASS)"
-        title_text = f"ROUTER: {mode_tag} | Vehicles: {routing_result.num_vehicles} | Humans: {routing_result.num_humans}"
-        cv2.putText(im, title_text, (15, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 240, 255), 2, cv2.LINE_AA)
+            # Left status text
+            mode_tag = "PRODUCTION (2-CLASS)" if detector_mode == DetectorMode.MULTI_CLASS_PRODUCTION else "TEST (SINGLE-CLASS)"
+            title_text = f"ROUTER: {mode_tag} | Vehicles: {routing_result.num_vehicles} | Humans: {routing_result.num_humans}"
+            cv2.putText(im, title_text, (15, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 240, 255), 2, cv2.LINE_AA)
 
-        # Right status text
-        stats_text = f"Frame: {frame_id} | FPS: {fps:.1f}"
-        (stw, _), _ = cv2.getTextSize(stats_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
-        cv2.putText(im, stats_text, (im_w - stw - 15, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 1, cv2.LINE_AA)
+            # Right status text
+            stats_text = f"Frame: {frame_id} | FPS: {fps:.1f}"
+            (stw, _), _ = cv2.getTextSize(stats_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+            cv2.putText(im, stats_text, (im_w - stw - 15, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 1, cv2.LINE_AA)
 
         return im
