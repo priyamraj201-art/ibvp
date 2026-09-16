@@ -197,21 +197,26 @@
     }
 
     /* Video Box */
+    /* Video Box */
     .cam-viewport {
         position: relative;
         width: 100%;
         aspect-ratio: 16 / 9;
         background: #020617;
+        border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
         overflow: hidden;
     }
-    .cam-stream-img {
+    .cam-stream-img, #focus-stream-img {
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        object-fit: contain; /* Never stretch, zoom, or crop native video */
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
         display: block;
+        background: #020617;
     }
     .cam-placeholder {
         position: absolute;
@@ -224,56 +229,79 @@
         color: #64748b;
         gap: 8px;
         font-size: 13px;
+        z-index: 5;
     }
     .cam-placeholder.hidden {
         display: none;
     }
     .cam-placeholder span.icon {
-        font-size: 32px;
+        font-size: 36px;
         color: #475569;
     }
 
-    /* Video HUD Overlays */
+    /* Modern Glassmorphism Video HUD Overlays */
+    .hud-top-left {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        display: flex;
+        gap: 8px;
+        z-index: 10;
+        pointer-events: none;
+    }
     .hud-top-right {
         position: absolute;
-        top: 8px;
-        right: 8px;
+        top: 10px;
+        right: 10px;
         display: flex;
-        gap: 6px;
+        gap: 8px;
         z-index: 10;
-    }
-    .hud-badge {
-        background: rgba(15, 23, 42, 0.85);
-        backdrop-filter: blur(4px);
-        color: #ffffff;
-        font-size: 11px;
-        font-weight: 600;
-        padding: 3px 8px;
-        border-radius: 4px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
+        pointer-events: none;
     }
     .hud-bottom-left {
         position: absolute;
-        bottom: 8px;
-        left: 8px;
+        bottom: 10px;
+        left: 10px;
         display: flex;
-        gap: 6px;
+        gap: 8px;
         z-index: 10;
+        pointer-events: none;
     }
     .hud-bottom-right {
         position: absolute;
-        bottom: 8px;
-        right: 8px;
+        bottom: 10px;
+        right: 10px;
         display: flex;
-        gap: 6px;
+        gap: 8px;
         z-index: 10;
+        pointer-events: none;
+    }
+    .hud-badge {
+        background: rgba(15, 23, 42, 0.88);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        color: #f8fafc;
+        font-size: 11.5px;
+        font-weight: 700;
+        padding: 5px 10px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+    .hud-badge-primary {
+        background: rgba(15, 23, 42, 0.92);
+        border-color: rgba(59, 130, 246, 0.4);
     }
 
     .cam-tile-footer {
         background: #0b1120;
-        padding: 8px 14px;
+        padding: 10px 14px;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -291,57 +319,100 @@
     }
 
     /* ═══════════════════════════════════════════════
-       1x1 Focus View
+       1x1 Focus View (Zero-Collapse Robust Grid)
        ═══════════════════════════════════════════════ */
     .focus-view-container {
         display: none;
-        grid-template-columns: 1fr 340px;
-        gap: 20px;
+        grid-template-columns: minmax(0, 1fr) 380px; /* Crucial: minmax(0,1fr) stops sidebar crushing */
+        gap: 24px;
         margin-bottom: 24px;
+        align-items: start;
     }
-    @media (max-width: 1050px) {
+    @media (max-width: 1150px) {
         .focus-view-container {
             grid-template-columns: 1fr;
         }
     }
+    .focus-main {
+        min-width: 0;
+        width: 100%;
+    }
     .focus-video-box {
         background: #000;
-        border-radius: 10px;
+        border-radius: 12px;
         overflow: hidden;
         border: 1px solid #1e293b;
-        box-shadow: var(--shadow-lg);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
         position: relative;
-    }
-    .focus-video-box img {
-        width: 100%;
-        display: block;
     }
     .focus-camera-switcher {
         display: flex;
-        gap: 8px;
-        margin-top: 12px;
+        gap: 10px;
+        margin-top: 14px;
         flex-wrap: wrap;
     }
     .switcher-pill {
         background: var(--card);
         border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 6px 12px;
+        border-radius: 8px;
+        padding: 8px 14px;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         transition: all 0.15s;
+        box-shadow: var(--shadow);
     }
     .switcher-pill:hover {
         border-color: var(--primary);
+        background: #f8fafc;
     }
     .switcher-pill.active {
         background: var(--primary);
         color: #ffffff;
         border-color: var(--primary);
+        box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
+    }
+
+    /* Focus Sidebar Card */
+    .focus-sidebar-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 22px;
+        box-shadow: var(--shadow-lg);
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-width: 0;
+    }
+    .telemetry-mini-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    .mini-stat-card {
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .mini-stat-val {
+        font-size: 20px;
+        font-weight: 800;
+        color: var(--text);
+    }
+    .mini-stat-lbl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
     }
 
     /* Collapsible Settings Accordion */
@@ -349,7 +420,7 @@
         display: none;
         background: var(--card);
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: 10px;
         padding: 18px 20px;
         margin-bottom: 20px;
         box-shadow: var(--shadow);
@@ -567,76 +638,97 @@
 <div class="focus-view-container" id="focus-view-container">
     <div class="focus-main">
         <div class="focus-video-box">
-            <div class="cam-viewport" style="aspect-ratio: 16 / 9; max-height: 540px;">
+            <div class="cam-viewport" style="aspect-ratio: 16 / 9; max-height: 580px;">
                 <img id="focus-stream-img" src="" alt="Focused Camera Stream">
+                
+                <!-- Top-Left Camera Status & Name -->
+                <div class="hud-top-left">
+                    <span class="hud-badge hud-badge-primary">
+                        <span class="status-dot live" id="focus-hud-dot"></span>
+                        <span id="focus-hud-cam-name">CAM 01: Checkpost Alpha</span>
+                    </span>
+                </div>
+
+                <!-- Top-Right Motion Alert Badge -->
                 <div class="hud-top-right">
                     <span class="hud-badge" id="focus-hud-alert" style="background:#22c55e;">MOTION: NORMAL</span>
                 </div>
+
+                <!-- Bottom-Left FPS & Hardware Mode -->
                 <div class="hud-bottom-left">
-                    <span class="hud-badge" id="focus-hud-cam-name">CAM 01: Checkpost Alpha</span>
                     <span class="hud-badge" id="focus-hud-fps">FPS: --</span>
+                    <span class="hud-badge" id="focus-hud-quality">720p HD</span>
                 </div>
+
+                <!-- Bottom-Right Detection Counts -->
                 <div class="hud-bottom-right">
                     <span class="hud-badge" id="focus-hud-counts">👤 0 | 🚗 0 | Tracks: 0</span>
                 </div>
             </div>
         </div>
 
+        <!-- Camera Switcher Pills -->
         <div class="focus-camera-switcher" id="focus-camera-switcher">
             <!-- Camera selection pills -->
         </div>
     </div>
 
     <!-- Sidebar for Focused Camera -->
-    <div class="card" style="margin: 0; padding: 18px;">
-        <div class="card-header" style="padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-            <span id="focus-sidebar-title">Camera Details</span>
-            <button class="btn btn-sm btn-secondary" onclick="setViewMode('grid')">Back to 2x2</button>
+    <div class="focus-sidebar-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+            <div>
+                <h3 style="font-size: 16px; font-weight: 800; color: var(--text); margin-bottom: 2px;" id="focus-sidebar-title">Camera Details</h3>
+                <span style="font-size: 12px; color: var(--text-muted);" id="focus-sidebar-location">--</span>
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="setViewMode('grid')" style="font-size: 12px;">
+                ⊞ 2x2 Grid
+            </button>
         </div>
 
-        <div style="font-size: 13px; line-height: 1.8;">
-            <div style="display:flex; justify-content:space-between;">
-                <span style="color:var(--text-muted)">Location:</span>
-                <span style="font-weight:600" id="focus-sidebar-location">--</span>
+        <!-- Telemetry 2x2 Grid -->
+        <div class="telemetry-mini-grid">
+            <div class="mini-stat-card">
+                <span class="mini-stat-lbl">Active Tracks</span>
+                <span class="mini-stat-val" id="focus-sidebar-tracks" style="color: var(--primary);">0</span>
             </div>
-            <div style="display:flex; justify-content:space-between;">
-                <span style="color:var(--text-muted)">Status:</span>
-                <span style="font-weight:600" id="focus-sidebar-status">OFFLINE</span>
+            <div class="mini-stat-card">
+                <span class="mini-stat-lbl">Stream Status</span>
+                <span class="mini-stat-val" id="focus-sidebar-status" style="font-size: 15px; color: #94a3b8;">OFFLINE</span>
             </div>
-            <div style="display:flex; justify-content:space-between;">
-                <span style="color:var(--text-muted)">Source:</span>
-                <span style="font-family:monospace; color:var(--primary); font-size:12px;" id="focus-sidebar-source">--</span>
+            <div class="mini-stat-card">
+                <span class="mini-stat-lbl">Pedestrians</span>
+                <span class="mini-stat-val" id="focus-sidebar-humans" style="color: #3b82f6;">0</span>
             </div>
-            <div style="display:flex; justify-content:space-between;">
-                <span style="color:var(--text-muted)">Active Tracks:</span>
-                <span style="font-weight:700" id="focus-sidebar-tracks">0</span>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-                <span style="color:var(--text-muted)">Pedestrians:</span>
-                <span style="font-weight:700; color:#3b82f6;" id="focus-sidebar-humans">0</span>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-                <span style="color:var(--text-muted)">Vehicles:</span>
-                <span style="font-weight:700; color:#10b981;" id="focus-sidebar-vehicles">0</span>
+            <div class="mini-stat-card">
+                <span class="mini-stat-lbl">Vehicles</span>
+                <span class="mini-stat-val" id="focus-sidebar-vehicles" style="color: #10b981;">0</span>
             </div>
         </div>
 
-        <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);">
-            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
+        <!-- Hardware Source Box -->
+        <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px;">
+            <div style="color: var(--text-muted); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Hardware Source</div>
+            <div style="font-family: monospace; color: var(--text); word-break: break-all; font-size: 11px;" id="focus-sidebar-source">--</div>
+        </div>
+
+        <!-- Latest Security & Intelligence Matches -->
+        <div>
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 8px;">
                 Latest Intelligence Matches
             </div>
-            <div id="focus-intel-matches">
-                <div style="color: var(--text-muted); font-size: 13px; font-style: italic;">
+            <div id="focus-intel-matches" style="min-height: 48px;">
+                <div style="color: var(--text-muted); font-size: 12px; font-style: italic; padding: 8px; background: #f8fafc; border-radius: 6px; border: 1px dashed var(--border);">
                     No facial or plate matches recorded on this camera.
                 </div>
             </div>
         </div>
 
-        <div style="margin-top: 20px; display: flex; gap: 8px;">
-            <button class="btn btn-primary btn-sm" style="flex:1;" id="focus-btn-toggle" onclick="toggleCurrentFocusedStream()">
+        <!-- Controls -->
+        <div style="display: flex; gap: 8px; margin-top: auto; padding-top: 10px;">
+            <button class="btn btn-primary btn-sm" style="flex: 1; font-weight: 700;" id="focus-btn-toggle" onclick="toggleCurrentFocusedStream()">
                 ▶ Start Stream
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="editCurrentFocusedCamera()">
+            <button class="btn btn-secondary btn-sm" onclick="editCurrentFocusedCamera()" title="Edit Camera Settings">
                 ⚙ Edit
             </button>
         </div>
@@ -1089,6 +1181,10 @@
             }
         }
 
+        const hudDot = document.getElementById('focus-hud-dot');
+        if (hudDot) {
+            hudDot.className = `status-dot ${cam.is_running ? 'live' : ''}`;
+        }
         document.getElementById('focus-hud-cam-name').textContent = cam.name;
         document.getElementById('focus-hud-fps').textContent = `FPS: ${cam.fps || '--'}`;
         document.getElementById('focus-hud-counts').textContent = `👤 ${cam.human_count || 0} | 🚗 ${cam.vehicle_count || 0} | Tracks: ${cam.active_tracks || 0}`;

@@ -39,8 +39,10 @@ from loguru import logger
 from yolox.exp import get_exp
 from yolox.tracker.byte_tracker import BYTETracker
 from yolox.tracker.alert_system import MotionAlertSystem
+from yolox.tracker.persistent_tracker import GLOBAL_PERSISTENT_TRACKER
 from yolox.anpr import ANPRPipeline, ANPRVisualizer
 from yolox.frs import FRSPipeline, FRSVisualizer
+from yolox.reid import GLOBAL_REID_PIPELINE, GLOBAL_REID_REGISTRY
 from yolox.routing import TrackRouter
 from yolox.utils.visualize import plot_tracking
 from yolox.tracking_utils.timer import Timer
@@ -197,28 +199,67 @@ class ZeroLagCapture:
         self._thread.start()
         return True
 
+    @staticmethod
+    def _probe_webcam(cam_idx: int) -> Tuple[Optional[cv2.VideoCapture], str]:
+        best_cap = None
+        best_label = ""
+        best_w = 0
+        backends = [
+            (cv2.CAP_MSMF, f"Webcam {cam_idx} (MSMF)"),
+            (cv2.CAP_DSHOW, f"Webcam {cam_idx} (DSHOW)"),
+            (cv2.CAP_ANY, f"Webcam {cam_idx}"),
+        ]
+        for backend, label in backends:
+            try:
+                cap = cv2.VideoCapture(cam_idx, backend)
+                if cap.isOpened():
+                    try:
+                        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                    except Exception:
+                        pass
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                    cap.set(cv2.CAP_PROP_FPS, 30)
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    # Verify camera actually delivers valid frames
+                    ret, test_frame = cap.read()
+                    if ret and test_frame is not None and test_frame.size > 0:
+                        w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+                        if w > best_w:
+                            if best_cap is not None:
+                                best_cap.release()
+                            best_cap = cap
+                            best_label = label
+                            best_w = w
+                            if w >= 1280:
+                                break
+                        else:
+                            cap.release()
+                    else:
+                        cap.release()
+            except Exception:
+                pass
+        return best_cap, best_label
+
     def _open_source(self) -> Tuple[Optional[cv2.VideoCapture], str, bool]:
         src = self.source_str
 
         # 1. Numeric webcam index (e.g. "0", "1", "2")
         if src.isdigit():
             cam_idx = int(src)
-            # Try DirectShow on Windows first for fast startup
-            try:
-                cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
-                if cap.isOpened():
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    return cap, f"Webcam {cam_idx} (DSHOW)", False
-            except Exception:
-                pass
+            best_cap, best_label = self._probe_webcam(cam_idx)
+            if best_cap is not None and best_cap.isOpened():
+                logger.info(f"[ZeroLagCapture] Selected {best_label}")
+                return best_cap, best_label, False
 
-            try:
-                cap = cv2.VideoCapture(cam_idx)
-                if cap.isOpened():
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    return cap, f"Webcam {cam_idx}", False
-            except Exception:
-                pass
+            # Automatic fallback: probe other standard webcam indices (0, 1) if requested index fails
+            alt_indices = [0, 1] if cam_idx not in (0, 1) else ([1] if cam_idx == 0 else [0])
+            for alt_idx in alt_indices:
+                alt_cap, alt_label = self._probe_webcam(alt_idx)
+                if alt_cap is not None and alt_cap.isOpened():
+                    logger.info(f"[ZeroLagCapture] Fallback: using {alt_label} instead of index {cam_idx}")
+                    return alt_cap, alt_label, False
+
             return None, f"Webcam index {cam_idx} unavailable", False
 
         # 2. DroidCam HTTP MJPEG stream (e.g. http://10.131.46.15:4747/video)
@@ -526,6 +567,7 @@ class CameraPipelineWorker(threading.Thread):
         ) if enable_anpr else None
 
         timer = Timer()
+        _seen_human_track_ids = set()
         frame_id = 0
         frs_alert_count = 0
         anpr_alert_count = 0
@@ -628,6 +670,22 @@ class CameraPipelineWorker(threading.Thread):
                         elif "LOW" in levels:
                             current_alert = "LOW"
 
+                # Persistent ID allocation for every tracked target
+                human_ids_set = {t.track_id for t in routing_result.human_tracks}
+                vehicle_ids_set = {t.track_id for t in routing_result.vehicle_tracks}
+                for t in valid_targets:
+                    etype = "HUMAN" if t.track_id in human_ids_set else ("VEHICLE" if t.track_id in vehicle_ids_set else "OBJECT")
+                    spd = alert_data.get(t.track_id, {}).get("speed", 0.0) if alert_data else 0.0
+                    t.persistent_id = GLOBAL_PERSISTENT_TRACKER.assign_or_get_id(
+                        cam_id=self.cam_id,
+                        cam_name=self.cam_name,
+                        local_track_id=t.track_id,
+                        entity_type=etype,
+                        tlwh=t.tlwh,
+                        frame=frame,
+                        speed=spd,
+                    )
+
                 # FRS execution
                 if frs_pipeline is not None:
                     hum_tlwhs = [t.tlwh for t in routing_result.human_tracks]
@@ -638,6 +696,17 @@ class CameraPipelineWorker(threading.Thread):
                     )
                     if frs_results:
                         for tid, res in frs_results.items():
+                            is_id = bool(res.get("person_id") and res.get("person_id") != "UNKNOWN")
+                            GLOBAL_PERSISTENT_TRACKER.update_identification(
+                                cam_id=self.cam_id,
+                                local_track_id=tid,
+                                is_identified=is_id,
+                                identified_id=res.get("person_id", "UNIDENTIFIED"),
+                                identified_name=res.get("name", "Unidentified Person"),
+                                category=res.get("category", "NORMAL"),
+                                confidence=res.get("confidence", 0.0),
+                                cam_name=self.cam_name,
+                            )
                             if res.get("is_flagged"):
                                 frs_alert_count += 1
                                 self.state.update_stats(
@@ -663,6 +732,18 @@ class CameraPipelineWorker(threading.Thread):
                     )
                     if anpr_results:
                         for tid, res in anpr_results.items():
+                            plate = res.get("plate_number")
+                            is_id = bool(plate)
+                            GLOBAL_PERSISTENT_TRACKER.update_identification(
+                                cam_id=self.cam_id,
+                                local_track_id=tid,
+                                is_identified=is_id,
+                                identified_id=plate or "UNIDENTIFIED",
+                                identified_name=f"Vehicle {plate}" if plate else "Unidentified Vehicle",
+                                category=res.get("alert_category", "NORMAL"),
+                                confidence=res.get("confidence", 0.0),
+                                cam_name=self.cam_name,
+                            )
                             if res.get("is_flagged"):
                                 anpr_alert_count += 1
                                 self.state.update_stats(
@@ -677,78 +758,52 @@ class CameraPipelineWorker(threading.Thread):
                                     anpr_alerts_session=anpr_alert_count,
                                 )
 
-                # Visualization HUD
-                all_tlwhs = [t.tlwh for t in valid_targets]
-                all_ids = [t.track_id for t in valid_targets]
+                # Full-Body Person Re-ID: submit detected humans for retained ID matching
+                fh, fw = frame.shape[:2]
+                for t in routing_result.human_tracks:
+                    if t.track_id not in _seen_human_track_ids or (frame_id % 15 == 0):
+                        x1, y1, w, h = map(int, t.tlwh)
+                        crop_person = frame[max(0, y1):min(fh, y1 + h), max(0, x1):min(fw, x1 + w)]
+                        if crop_person.size > 0:
+                            GLOBAL_REID_PIPELINE.submit_observation(
+                                cam_id=self.cam_id,
+                                cam_name=self.cam_name,
+                                local_track_id=t.track_id,
+                                crop=crop_person,
+                                bbox=[x1, y1, w, h],
+                            )
+
+                _seen_human_track_ids = {t.track_id for t in routing_result.human_tracks}
+
+                # Attach retained ID to tracks for HUD rendering and persistence
+                for t in routing_result.human_tracks:
+                    retained_id = GLOBAL_REID_PIPELINE.get_retained_id(self.cam_id, t.track_id)
+                    if retained_id:
+                        t.retained_id = retained_id
+                        t.persistent_id = retained_id
+
+                # Visualization: Draw clean bounding boxes, labels, and retained IDs without restricted zones
                 fps_val = 1.0 / max(1e-5, timer.average_time)
-
-                if frs_pipeline is not None and anpr_pipeline is not None:
-                    online_im = track_router.draw_unified_overlay(
-                        frame, routing_result,
-                        anpr_results=anpr_results or {},
-                        frs_results=frs_results or {},
-                        alert_data=alert_data,
-                        detector_mode=args.detector_mode,
-                        frame_id=frame_id, fps=fps_val,
-                    )
-                elif frs_pipeline is not None:
-                    online_im = FRSVisualizer.draw_frs_overlay(
-                        frame, all_tlwhs, all_ids,
-                        frs_results or {}, frame_id=frame_id, fps=fps_val,
-                    )
-                elif anpr_pipeline is not None:
-                    online_im = ANPRVisualizer.draw_anpr_overlay(
-                        frame, all_tlwhs, all_ids,
-                        anpr_results or {}, frame_id=frame_id, fps=fps_val,
-                    )
-                else:
-                    online_im = plot_tracking(
-                        frame, all_tlwhs, all_ids,
-                        frame_id=frame_id, fps=fps_val,
-                    )
-
-            # Draw Camera Banner (Top-Left)
-            cam_banner = f"{self.cam_name} | {self.location}"
-            cv2.rectangle(online_im, (8, 8), (len(cam_banner) * 11 + 24, 38), (15, 23, 42), -1)
-            cv2.rectangle(online_im, (8, 8), (len(cam_banner) * 11 + 24, 38), (59, 130, 246), 1)
-            # Pulsing green status dot
-            cv2.circle(online_im, (22, 23), 5, (34, 197, 94), -1)
-            cv2.putText(
-                online_im, cam_banner, (36, 28),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 255, 255), 1, cv2.LINE_AA,
-            )
-
-            # Motion alert HUD badge (Top-Right)
-            if current_alert != "NORMAL":
-                badge_color = {
-                    "LOW": (0, 255, 255),
-                    "MEDIUM": (0, 128, 255),
-                    "HIGH": (0, 0, 255),
-                }[current_alert]
-                h, w = online_im.shape[:2]
-                cv2.rectangle(online_im, (w - 210, 8), (w - 8, 40), badge_color, -1)
-                cv2.putText(
-                    online_im, f"MOTION: {current_alert}", (w - 200, 31),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2,
+                online_im = track_router.draw_unified_overlay(
+                    frame, routing_result,
+                    anpr_results=anpr_results or {},
+                    frs_results=frs_results or {},
+                    alert_data=alert_data,
+                    detector_mode=args.detector_mode,
+                    frame_id=frame_id, fps=fps_val,
+                    show_header=False,
                 )
 
-            # Draw Device & Hardware Info (Bottom-Left)
-            dev_badge = f"{SHARED_DETECTOR.device_name} | FP16:{'ON' if SHARED_DETECTOR.fp16_enabled else 'OFF'}"
-            cv2.putText(
-                online_im, dev_badge, (12, online_im.shape[0] - 12),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 128), 1, cv2.LINE_AA,
-            )
-
-            # Fast preview downscaling for web streaming (saves 80% CPU & bandwidth)
+            # Web preview scaling: maintain crisp 720p HD, only downsample 4K/1080p > 1280 using INTER_AREA
             h_im, w_im = online_im.shape[:2]
-            if w_im > 960:
-                scale_w = 960.0 / w_im
-                preview_im = cv2.resize(online_im, (960, int(h_im * scale_w)), interpolation=cv2.INTER_LINEAR)
+            if w_im > 1280:
+                scale_w = 1280.0 / w_im
+                preview_im = cv2.resize(online_im, (1280, int(h_im * scale_w)), interpolation=cv2.INTER_AREA)
             else:
                 preview_im = online_im
 
-            # Encode to JPEG and publish to state
-            _, jpeg = cv2.imencode(".jpg", preview_im, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            # High-clarity JPEG encoding (Quality 88 preserves facial details and sharp text without blockiness)
+            _, jpeg = cv2.imencode(".jpg", preview_im, [cv2.IMWRITE_JPEG_QUALITY, 88])
             self.state.set_frame(jpeg.tobytes())
             self.state.update_stats(
                 fps=round(smooth_fps, 1),
