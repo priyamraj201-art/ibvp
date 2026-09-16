@@ -385,6 +385,52 @@ class ZeroLagCapture:
         self.is_opened = False
 
 
+class PhoneCamCapture:
+    """
+    Frame source fed by browser-pushed JPEG frames over a WebSocket, instead
+    of pulling from cv2.VideoCapture. Exposes the same public interface as
+    ZeroLagCapture (start/read_latest/stop/is_opened/source_label) so
+    CameraPipelineWorker can use either interchangeably.
+    """
+
+    STALE_FRAME_TIMEOUT_SECONDS = 5.0
+
+    def __init__(self, device_id: str):
+        self.device_id = device_id
+        self.source_label = f"Phone Camera ({device_id})"
+        self.is_video_file = False
+        self.is_opened = False
+        self.frame_count = 0
+        self._latest_frame: Optional[np.ndarray] = None
+        self._last_frame_at: float = 0.0
+        self._lock = threading.Lock()
+
+    def start(self) -> bool:
+        self.is_opened = True
+        return True
+
+    def push_frame(self, frame: np.ndarray):
+        """Called by the WebSocket handler whenever a new frame arrives from the phone."""
+        with self._lock:
+            self._latest_frame = frame
+            self._last_frame_at = time.time()
+            self.frame_count += 1
+
+    def read_latest(self) -> Tuple[bool, Optional[np.ndarray]]:
+        """Retrieve the newest available frame, or (False, None) if none/stale."""
+        with self._lock:
+            if self._latest_frame is None:
+                return False, None
+            if time.time() - self._last_frame_at > self.STALE_FRAME_TIMEOUT_SECONDS:
+                return False, None
+            return True, self._latest_frame.copy()
+
+    def stop(self):
+        self.is_opened = False
+        with self._lock:
+            self._latest_frame = None
+
+
 # ──────────────────────────────────────────────
 # Shared Neural Network Detector (CUDA / CPU)
 # ──────────────────────────────────────────────
