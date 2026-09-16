@@ -42,6 +42,7 @@ from yolox.tracker.alert_system import MotionAlertSystem
 from yolox.tracker.persistent_tracker import GLOBAL_PERSISTENT_TRACKER
 from yolox.anpr import ANPRPipeline, ANPRVisualizer
 from yolox.frs import FRSPipeline, FRSVisualizer
+from yolox.reid import GLOBAL_REID_PIPELINE, GLOBAL_REID_REGISTRY
 from yolox.routing import TrackRouter
 from yolox.utils.visualize import plot_tracking
 from yolox.tracking_utils.timer import Timer
@@ -198,33 +199,31 @@ class ZeroLagCapture:
         self._thread.start()
         return True
 
-    def _open_source(self) -> Tuple[Optional[cv2.VideoCapture], str, bool]:
-        src = self.source_str
-
-        # 1. Numeric webcam index (e.g. "0", "1", "2")
-        if src.isdigit():
-            cam_idx = int(src)
-            # Find backend yielding the highest resolution (MSMF gives 720p HD on modern Windows laptop webcams)
-            best_cap = None
-            best_label = ""
-            best_w = 0
-            backends = [
-                (cv2.CAP_MSMF, f"Webcam {cam_idx} (MSMF)"),
-                (cv2.CAP_DSHOW, f"Webcam {cam_idx} (DSHOW)"),
-                (cv2.CAP_ANY, f"Webcam {cam_idx}"),
-            ]
-            for backend, label in backends:
-                try:
-                    cap = cv2.VideoCapture(cam_idx, backend)
-                    if cap.isOpened():
-                        try:
-                            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-                        except Exception:
-                            pass
-                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-                        cap.set(cv2.CAP_PROP_FPS, 30)
-                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    @staticmethod
+    def _probe_webcam(cam_idx: int) -> Tuple[Optional[cv2.VideoCapture], str]:
+        best_cap = None
+        best_label = ""
+        best_w = 0
+        backends = [
+            (cv2.CAP_MSMF, f"Webcam {cam_idx} (MSMF)"),
+            (cv2.CAP_DSHOW, f"Webcam {cam_idx} (DSHOW)"),
+            (cv2.CAP_ANY, f"Webcam {cam_idx}"),
+        ]
+        for backend, label in backends:
+            try:
+                cap = cv2.VideoCapture(cam_idx, backend)
+                if cap.isOpened():
+                    try:
+                        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                    except Exception:
+                        pass
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                    cap.set(cv2.CAP_PROP_FPS, 30)
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    # Verify camera actually delivers valid frames
+                    ret, test_frame = cap.read()
+                    if ret and test_frame is not None and test_frame.size > 0:
                         w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
                         if w > best_w:
                             if best_cap is not None:
@@ -236,12 +235,30 @@ class ZeroLagCapture:
                                 break
                         else:
                             cap.release()
-                except Exception:
-                    pass
+                    else:
+                        cap.release()
+            except Exception:
+                pass
+        return best_cap, best_label
 
+    def _open_source(self) -> Tuple[Optional[cv2.VideoCapture], str, bool]:
+        src = self.source_str
+
+        # 1. Numeric webcam index (e.g. "0", "1", "2")
+        if src.isdigit():
+            cam_idx = int(src)
+            best_cap, best_label = self._probe_webcam(cam_idx)
             if best_cap is not None and best_cap.isOpened():
-                logger.info(f"[ZeroLagCapture] Selected {best_label} @ {best_w}px width")
+                logger.info(f"[ZeroLagCapture] Selected {best_label}")
                 return best_cap, best_label, False
+
+            # Automatic fallback: probe other standard webcam indices (0, 1) if requested index fails
+            alt_indices = [0, 1] if cam_idx not in (0, 1) else ([1] if cam_idx == 0 else [0])
+            for alt_idx in alt_indices:
+                alt_cap, alt_label = self._probe_webcam(alt_idx)
+                if alt_cap is not None and alt_cap.isOpened():
+                    logger.info(f"[ZeroLagCapture] Fallback: using {alt_label} instead of index {cam_idx}")
+                    return alt_cap, alt_label, False
 
             return None, f"Webcam index {cam_idx} unavailable", False
 
@@ -550,6 +567,7 @@ class CameraPipelineWorker(threading.Thread):
         ) if enable_anpr else None
 
         timer = Timer()
+        _seen_human_track_ids = set()
         frame_id = 0
         frs_alert_count = 0
         anpr_alert_count = 0
@@ -740,7 +758,31 @@ class CameraPipelineWorker(threading.Thread):
                                     anpr_alerts_session=anpr_alert_count,
                                 )
 
-                # Visualization: Draw clean bounding boxes, labels, and persistent IDs without clashing top headers
+                # Full-Body Person Re-ID: submit detected humans for retained ID matching
+                fh, fw = frame.shape[:2]
+                for t in routing_result.human_tracks:
+                    if t.track_id not in _seen_human_track_ids or (frame_id % 15 == 0):
+                        x1, y1, w, h = map(int, t.tlwh)
+                        crop_person = frame[max(0, y1):min(fh, y1 + h), max(0, x1):min(fw, x1 + w)]
+                        if crop_person.size > 0:
+                            GLOBAL_REID_PIPELINE.submit_observation(
+                                cam_id=self.cam_id,
+                                cam_name=self.cam_name,
+                                local_track_id=t.track_id,
+                                crop=crop_person,
+                                bbox=[x1, y1, w, h],
+                            )
+
+                _seen_human_track_ids = {t.track_id for t in routing_result.human_tracks}
+
+                # Attach retained ID to tracks for HUD rendering and persistence
+                for t in routing_result.human_tracks:
+                    retained_id = GLOBAL_REID_PIPELINE.get_retained_id(self.cam_id, t.track_id)
+                    if retained_id:
+                        t.retained_id = retained_id
+                        t.persistent_id = retained_id
+
+                # Visualization: Draw clean bounding boxes, labels, and retained IDs without restricted zones
                 fps_val = 1.0 / max(1e-5, timer.average_time)
                 online_im = track_router.draw_unified_overlay(
                     frame, routing_result,

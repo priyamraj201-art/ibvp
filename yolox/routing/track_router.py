@@ -177,13 +177,16 @@ class TrackRouter:
 
             # Check FRS identification
             face_info = frs_results.get(tid) if frs_results else None
-            is_identified = face_info and face_info.get("person_id") != "UNKNOWN"
-            is_flagged = face_info.get("is_flagged", False) if face_info else False
+            is_identified = bool(face_info and face_info.get("person_id") and face_info.get("person_id") != "UNKNOWN")
+            is_flagged = bool(face_info and face_info.get("is_flagged", False))
+
+            # Retained Person ID (from Re-ID or Persistent Tracker)
+            retained_id = getattr(track, "retained_id", None) or getattr(track, "persistent_id", None) or f"PER-{tid:04d}"
 
             if is_flagged:
                 color = (0, 0, 230)  # Red alert for flagged face
             elif is_identified:
-                cat = face_info.get("category", "NORMAL").upper()
+                cat = str(face_info.get("category", "NORMAL")).upper()
                 if cat == "VIP":
                     color = (0, 200, 0)
                 elif cat == "STAFF":
@@ -198,29 +201,32 @@ class TrackRouter:
                     pt2 = (int(trail[idx][0]), int(trail[idx][1]))
                     cv2.line(im, pt1, pt2, color, thickness)
 
-            # Bounding box
+            # Clean bounding box
             box_thick = 3 if is_flagged else 2
             cv2.rectangle(im, (x1, y1), (x2, y2), color, box_thick)
 
-            # Human badge with Persistent ID
-            pid_label = getattr(track, "persistent_id", None) or f"PER-{tid:04d}"
+            # Retained ID badge display
             if is_identified:
                 name = face_info.get("name", "Identified")
                 cat = face_info.get("category", "KNOWN")
-                badge_text = f"[{pid_label} | {cat}] {name} | {speed:.0f} px/s [{level}]"
+                badge_text = f"[{retained_id}] {name} ({cat}) | {speed:.0f} px/s [{level}]"
             else:
-                badge_text = f"[{pid_label}] Unidentified | {speed:.0f} px/s [{level}]"
+                badge_text = f"[{retained_id}] Human | {speed:.0f} px/s [{level}]"
 
             (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             by1 = max(0, y1 - th - 8)
             cv2.rectangle(im, (x1, by1), (x1 + tw + 8, y1), color, -1)
-            text_col = (255, 255, 255) if is_flagged else (0, 0, 0)
+            text_col = (255, 255, 255) if (is_flagged or level in ("HIGH", "MEDIUM")) else (0, 0, 0)
             cv2.putText(im, badge_text, (x1 + 4, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_col, 1, cv2.LINE_AA)
 
         # 2. Render Vehicle Tracks (ANPR Badges with Persistent ID)
         if anpr_results is not None:
+            rendered_human_tids = {t.track_id for t in routing_result.human_tracks}
             for track in routing_result.vehicle_tracks:
                 tid = track.track_id
+                if detector_mode == DetectorMode.SINGLE_CLASS_TEST and tid in rendered_human_tids:
+                    # In single class mode (persons), do not draw duplicate vehicle badge
+                    continue
                 tlwh = track.tlwh
                 x1, y1, w, h = map(int, tlwh)
                 x2, y2 = x1 + w, y1 + h

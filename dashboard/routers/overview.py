@@ -21,6 +21,7 @@ def _get_db_paths(request: Request):
 
 
 @router.get("/")
+@router.get("/overview")
 async def overview_page(request: Request):
     frs_db, anpr_db = _get_db_paths(request)
     ent_stats = GLOBAL_PERSISTENT_TRACKER.db.get_stats()

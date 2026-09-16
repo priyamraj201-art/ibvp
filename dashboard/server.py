@@ -54,6 +54,8 @@ def create_app(frs_db: str, anpr_db: str) -> FastAPI:
     def shutdown_event():
         from dashboard.stream_server import MULTI_CAMERA_MANAGER
         MULTI_CAMERA_MANAGER.stop_all()
+        from yolox.reid import GLOBAL_REID_PIPELINE
+        GLOBAL_REID_PIPELINE.stop()
 
     return app
 
