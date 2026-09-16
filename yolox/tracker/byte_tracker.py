@@ -27,6 +27,7 @@ class STrack(BaseTrack):
         self.cls = int(cls)
         self.class_history = deque(maxlen=10)
         self.class_history.append(int(cls))
+        self.persistent_id: Optional[str] = None
 
     def predict(self):
         mean_state = self.mean.copy()
@@ -76,6 +77,8 @@ class STrack(BaseTrack):
         self.score = new_track.score
         self.cls = new_track.cls
         self.class_history.append(new_track.cls)
+        if getattr(new_track, "persistent_id", None):
+            self.persistent_id = new_track.persistent_id
 
     def update(self, new_track, frame_id):
         """
@@ -97,6 +100,8 @@ class STrack(BaseTrack):
         self.score = new_track.score
         self.cls = new_track.cls
         self.class_history.append(new_track.cls)
+        if getattr(new_track, "persistent_id", None):
+            self.persistent_id = new_track.persistent_id
 
     @property
     def smoothed_cls(self):

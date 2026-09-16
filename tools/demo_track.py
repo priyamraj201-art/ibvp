@@ -22,6 +22,7 @@ from yolox.utils import fuse_model, get_model_info, postprocess
 from yolox.utils.visualize import plot_tracking
 from yolox.tracker.byte_tracker import BYTETracker
 from yolox.tracker.alert_system import MotionAlertSystem
+from yolox.tracker.persistent_tracker import GLOBAL_PERSISTENT_TRACKER
 from yolox.anpr import ANPRPipeline, ANPRVisualizer
 from yolox.frs import FRSPipeline, FRSVisualizer
 from yolox.routing import TrackRouter, DetectorMode
@@ -645,6 +646,28 @@ def imageflow_demo(predictor, vis_folder, current_time, args, exp):
                 alert_data = None
                 frs_results = None
 
+                if alert_system is not None:
+                    hum_tlwhs = [t.tlwh for t in routing_result.human_tracks]
+                    hum_ids = [t.track_id for t in routing_result.human_tracks]
+                    alert_data = alert_system.update(hum_tlwhs, hum_ids, current_time=time.time())
+
+                # Persistent ID allocation for every tracked target
+                human_ids_set = {t.track_id for t in routing_result.human_tracks}
+                vehicle_ids_set = {t.track_id for t in routing_result.vehicle_tracks}
+                for t in valid_targets:
+                    etype = "HUMAN" if t.track_id in human_ids_set else ("VEHICLE" if t.track_id in vehicle_ids_set else "OBJECT")
+                    spd = alert_data.get(t.track_id, {}).get("speed", 0.0) if alert_data else 0.0
+                    raw_f = img_info['raw_img'] if isinstance(img_info, dict) and 'raw_img' in img_info else frame
+                    t.persistent_id = GLOBAL_PERSISTENT_TRACKER.assign_or_get_id(
+                        cam_id=getattr(args, "camid", 0),
+                        cam_name="CLI Video Tracker",
+                        local_track_id=t.track_id,
+                        entity_type=etype,
+                        tlwh=t.tlwh,
+                        frame=raw_f,
+                        speed=spd,
+                    )
+
                 if anpr_pipeline is not None:
                     veh_tlwhs = [t.tlwh for t in routing_result.vehicle_tracks]
                     veh_ids = [t.track_id for t in routing_result.vehicle_tracks]
@@ -652,11 +675,20 @@ def imageflow_demo(predictor, vis_folder, current_time, args, exp):
                     anpr_results = anpr_pipeline.process_frame(
                         img_info['raw_img'], veh_tlwhs, veh_ids, veh_scores, current_time=time.time()
                     )
-
-                if alert_system is not None:
-                    hum_tlwhs = [t.tlwh for t in routing_result.human_tracks]
-                    hum_ids = [t.track_id for t in routing_result.human_tracks]
-                    alert_data = alert_system.update(hum_tlwhs, hum_ids, current_time=time.time())
+                    if anpr_results:
+                        for tid, res in anpr_results.items():
+                            plate = res.get("plate_number")
+                            is_id = bool(plate)
+                            GLOBAL_PERSISTENT_TRACKER.update_identification(
+                                cam_id=getattr(args, "camid", 0),
+                                local_track_id=tid,
+                                is_identified=is_id,
+                                identified_id=plate or "UNIDENTIFIED",
+                                identified_name=f"Vehicle {plate}" if plate else "Unidentified Vehicle",
+                                category=res.get("alert_category", "NORMAL"),
+                                confidence=res.get("confidence", 0.0),
+                                cam_name="CLI Video Tracker",
+                            )
 
                 if frs_pipeline is not None:
                     hum_tlwhs = [t.tlwh for t in routing_result.human_tracks]
@@ -665,6 +697,19 @@ def imageflow_demo(predictor, vis_folder, current_time, args, exp):
                     frs_results = frs_pipeline.process_frame(
                         img_info['raw_img'], hum_tlwhs, hum_ids, hum_scores, current_time=time.time()
                     )
+                    if frs_results:
+                        for tid, res in frs_results.items():
+                            is_id = bool(res.get("person_id") and res.get("person_id") != "UNKNOWN")
+                            GLOBAL_PERSISTENT_TRACKER.update_identification(
+                                cam_id=getattr(args, "camid", 0),
+                                local_track_id=tid,
+                                is_identified=is_id,
+                                identified_id=res.get("person_id", "UNIDENTIFIED"),
+                                identified_name=res.get("name", "Unidentified Person"),
+                                category=res.get("category", "NORMAL"),
+                                confidence=res.get("confidence", 0.0),
+                                cam_name="CLI Video Tracker",
+                            )
                 _last_routing_result = routing_result
                 _last_frs_results = frs_results
                 _last_anpr_results = anpr_results

@@ -18,10 +18,11 @@ if _DASHBOARD_ROOT not in sys.path:
     sys.path.insert(0, _DASHBOARD_ROOT)
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 # Import routers
-from dashboard.routers import live, overview, frs, anpr, alerts, settings
+from dashboard.routers import live, overview, frs, anpr, alerts, settings, entities
 
 
 def create_app(frs_db: str, anpr_db: str) -> FastAPI:
@@ -31,6 +32,11 @@ def create_app(frs_db: str, anpr_db: str) -> FastAPI:
         version="1.0.0",
     )
 
+    # Mount assets for entity thumbnail crops
+    assets_dir = os.path.join(_BYTETRACK_ROOT, "assets")
+    os.makedirs(assets_dir, exist_ok=True)
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
     # Store DB paths in app state for access by routers
     app.state.frs_db = frs_db
     app.state.anpr_db = anpr_db
@@ -38,6 +44,7 @@ def create_app(frs_db: str, anpr_db: str) -> FastAPI:
     # Include routers
     app.include_router(live.router)
     app.include_router(overview.router)
+    app.include_router(entities.router)
     app.include_router(frs.router)
     app.include_router(anpr.router)
     app.include_router(alerts.router)
@@ -47,6 +54,8 @@ def create_app(frs_db: str, anpr_db: str) -> FastAPI:
     def shutdown_event():
         from dashboard.stream_server import MULTI_CAMERA_MANAGER
         MULTI_CAMERA_MANAGER.stop_all()
+        from yolox.reid import GLOBAL_REID_PIPELINE
+        GLOBAL_REID_PIPELINE.stop()
 
     return app
 
