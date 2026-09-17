@@ -1,30 +1,9 @@
 [
   {
-    "id": 0,
-    "name": "CAM 01: Laptop Integrated Camera",
-    "location": "Control Room",
-    "url": "0",
-    "enabled": true
-  },
-  {
-    "id": 1,
-    "name": "CAM 02: Surveillance Feed Alpha",
-    "location": "Main Walkway",
-    "url": "videos/palace.mp4",
-    "enabled": true
-  },
-  {
-    "id": 2,
-    "name": "CAM 03: Border Approach Perimeter",
-    "location": "Approach Road",
-    "url": "videos/cctv.mp4",
-    "enabled": true
-  },
-  {
-    "id": 3,
-    "name": "CAM 04: Phone Direct WiFi Stream",
-    "location": "Sector 3 Checkpoint",
-    "url": "http://10.131.46.15:4747/video",
+    "id": 4,
+    "name": "Phone 1",
+    "location": "Phone (Shared Perception)",
+    "url": "phonecam://phone-p7bfhu55",
     "enabled": true
   }
 ]
