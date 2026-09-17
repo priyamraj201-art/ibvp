@@ -100,5 +100,15 @@ class PhoneDeviceRegistry:
         MULTI_CAMERA_MANAGER.start_camera(cam_id)
         return cam_id
 
+    def unregister_device(self, device_id: str) -> Optional[int]:
+        """Drop a disconnected phone's capture + cam-id mapping.
+
+        Returns the cam_id that was mapped to this device, if any, so the
+        caller can stop its worker and remove it from the camera registry.
+        """
+        with self._lock:
+            self._captures.pop(device_id, None)
+            return self._device_cam_ids.pop(device_id, None)
+
 
 PHONE_DEVICE_REGISTRY = PhoneDeviceRegistry()

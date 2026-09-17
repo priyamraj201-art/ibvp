@@ -8,6 +8,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+from loguru import logger
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -288,3 +289,9 @@ async def phonecam_websocket(websocket: WebSocket, pair_token: str, device_id: s
                 capture.push_frame(frame)
     except WebSocketDisconnect:
         pass
+    finally:
+        cam_id = PHONE_DEVICE_REGISTRY.unregister_device(device_id)
+        if cam_id is not None:
+            MULTI_CAMERA_MANAGER.stop_camera(cam_id)
+            CAMERA_REGISTRY.delete_camera(cam_id)
+            logger.info(f"[PhoneCam] Device {device_id} disconnected — removed camera {cam_id}")

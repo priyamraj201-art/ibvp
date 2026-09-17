@@ -932,7 +932,7 @@ class MultiCameraManager:
             "enable_frs": False,
             "enable_anpr": False,
             "enable_motion_alert": True,
-            "detect_skip": 1,
+            "detect_skip": 3,
             "exp_file": "exps/example/mot/yolox_x_mix_det.py",
             "ckpt_file": "pretrained/bytetrack_x_mot17.pth.tar",
             "frs_db": "frs_faces.db",

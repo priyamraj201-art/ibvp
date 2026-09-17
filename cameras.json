@@ -1,9 +1,9 @@
 [
   {
-    "id": 4,
-    "name": "Phone 1",
-    "location": "Phone (Shared Perception)",
-    "url": "phonecam://phone-p7bfhu55",
+    "id": 6,
+    "name": "Laptop Webcam",
+    "location": "Control Room",
+    "url": "0",
     "enabled": true
   }
 ]

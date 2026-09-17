@@ -596,7 +596,7 @@
         </div>
         <div class="form-group" style="margin-bottom:0;">
             <label for="cluster-detect-skip">Frame Skip (2 = 2x FPS Boost)</label>
-            <input type="number" id="cluster-detect-skip" class="form-control" value="2" min="1" max="5">
+            <input type="number" id="cluster-detect-skip" class="form-control" value="3" min="1" max="5">
         </div>
         <div class="form-group" style="margin-bottom:0;">
             <label for="cluster-detector-mode">Routing Mode</label>
@@ -872,7 +872,7 @@
         return {
             device: document.getElementById('cluster-device').value,
             fp16: document.getElementById('cluster-fp16').checked,
-            detect_skip: parseInt(document.getElementById('cluster-detect-skip').value) || 1,
+            detect_skip: parseInt(document.getElementById('cluster-detect-skip').value) || 3,
             detector_mode: document.getElementById('cluster-detector-mode').value,
             enable_motion_alert: document.getElementById('cluster-motion-alert').checked,
             enable_frs: document.getElementById('cluster-enable-frs').checked,

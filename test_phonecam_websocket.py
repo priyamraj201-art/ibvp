@@ -108,9 +108,13 @@ def test_websocket_accepts_valid_token_and_feeds_capture(tmp_path, monkeypatch):
     try:
         with client.websocket_connect(f"/ws/phonecam/{token}/{device_id}?name=Gate%20Test") as ws:
             ws.send_bytes(_jpeg_bytes())
+            # Grab the capture reference while still connected: on disconnect
+            # the WebSocket handler unregisters the device (removing it from
+            # the dashboard), so a post-close get_or_create_capture() would
+            # hand back a brand-new, empty capture instead of this one.
+            capture = PHONE_DEVICE_REGISTRY.get_or_create_capture(device_id)
             ws.close()
 
-        capture = PHONE_DEVICE_REGISTRY.get_or_create_capture(device_id)
         ret, frame = capture.read_latest()
         assert ret is True
         assert frame.shape[2] == 3
@@ -139,9 +143,11 @@ def test_websocket_drops_corrupt_frame_without_crashing(tmp_path, monkeypatch):
         with client.websocket_connect(f"/ws/phonecam/{token}/{device_id}?name=Gate%20Test") as ws:
             ws.send_bytes(b"not a real jpeg")  # undecodable -> cv2.imdecode returns None
             ws.send_bytes(_jpeg_bytes(value=99))  # handler must still be alive to process this
+            # Grab the capture reference while still connected — see comment
+            # in test_websocket_accepts_valid_token_and_feeds_capture above.
+            capture = PHONE_DEVICE_REGISTRY.get_or_create_capture(device_id)
             ws.close()
 
-        capture = PHONE_DEVICE_REGISTRY.get_or_create_capture(device_id)
         ret, frame = capture.read_latest()
         assert ret is True
         assert frame.shape[2] == 3
